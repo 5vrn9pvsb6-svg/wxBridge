@@ -118,17 +118,14 @@ export class WeixinLinkedFiles {
       try {
         if (fileCount >= maxFiles) { throw new LinkedFileError('countLimit'); }
         const bytes = readWorkspaceDocument(source, options.cwd, maxBytes);
-        const markdown = /\.(?:md|markdown)$/iu.test(source);
-        const basename = path.basename(source).replace(/[<>:"/\\|?*\x00-\x1f]/gu, '_');
-        const name = markdown ? basename.replace(/\.(?:md|markdown)$/iu, '.txt') : basename;
+        const name = path.basename(source).replace(/[<>:"/\\|?*\x00-\x1f]/gu, '_');
         spool = fs.mkdtempSync(path.join(os.tmpdir(), 'wxbridage-linked-file-'));
         const snapshot = path.join(spool, name);
-        // A TXT companion preserves the whole Markdown report, including tables and evidence.
-        fs.writeFileSync(snapshot, markdown ? Buffer.concat([Buffer.from('\uFEFF'), bytes]) : bytes, { mode: 0o600 });
+        fs.writeFileSync(snapshot, bytes, { mode: 0o600 });
         fileCount += 1;
         if (options.signal?.aborted) { return; }
         uploading = true;
-        const result = await options.sendFile(snapshot, i18n.t(markdown ? 'runtime.linkedFile.markdownCaption' : 'runtime.linkedFile.caption', { label: link.label }));
+        const result = await options.sendFile(snapshot, i18n.t('runtime.linkedFile.caption', { label: link.label }));
         if (result.success) { acknowledge(fileKey); }
         else { reason = 'uploadFailed'; }
       } catch (error) {

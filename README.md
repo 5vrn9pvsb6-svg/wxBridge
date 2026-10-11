@@ -15,7 +15,7 @@ Original upstream repository: [Gan-Xing/CodexBridge](https://github.com/Gan-Xing
 - **Follow work from your phone:** receive visible progress, the final result, and a separate completion/elapsed-time notice for shared turns, including work started on the computer.
 - **Return to your own WeChat conversation:** `/exit` restores the independent session used before sharing; the original computer session and its running task remain available.
 - **Resume output delivery:** persisted acknowledgements skip already delivered shared output after a bridge restart or reconnect.
-- **Read reports in WeChat:** local report links in completed replies are accompanied by file attachments; Markdown reports get a complete TXT reading copy.
+- **Read reports in WeChat:** local report links in completed replies are accompanied by file attachments; Markdown reports keep their original format and contents.
 
 ## Supported Shared Sessions
 
@@ -44,7 +44,7 @@ Setup: [Codex desktop sharing](#codex-desktop-sharing) · [Claude Code sharing](
 
 ## Open Local Reports in WeChat
 
-When a completed assistant reply contains a link such as `[Analysis report](/path/to/project/outputs/report.md)`, wxBridage sends the document as a separate WeChat attachment. Open the **file attachment** to read it: the original computer-local link in the message is still not a public web address. Markdown (`.md` / `.markdown`) reports become UTF-8 `.txt` reading copies with their full contents preserved; PDF, TXT, CSV, Office documents and supported images are sent unchanged. The original file is not modified or hosted on a public website.
+When a completed assistant reply contains a link such as `[Analysis report](/path/to/project/outputs/report.md)`, wxBridage sends the document as a separate WeChat attachment. Open the **file attachment** to read it: the original computer-local link in the message is still not a public web address. Markdown reports retain their `.md` / `.markdown` extension and exact original contents for the client's Markdown preview. PDF, TXT, CSV and Office documents also retain their original format; supported images use the existing image delivery channel. The original file is not modified or hosted on a public website.
 
 This works for independent replies and shared Codex / Claude Code replies, including tasks started on the computer. Attachments follow the completed reply and precede the usual shared-turn completion/duration notice. Already acknowledged shared attachments are skipped after a reconnect. Existing messages and `/peek` history are not retroactively converted; ask the assistant to send the report again.
 

@@ -25,7 +25,7 @@ function fixture(context: { after: (callback: () => void) => void }) {
         return { success: true, deliveredCount: 1, deliveredText: content, failedIndex: null, failedText: '', error: '' };
       },
       async sendMedia({ filePath }) {
-        assert.equal(path.extname(filePath), '.txt');
+        assert.equal(path.basename(filePath), 'report.zh-CN.md');
         files.push(fs.readFileSync(filePath, 'utf8'));
         return { success: true, messageId: 'sent', sentPath: filePath, sentCaption: '', error: '' };
       },
@@ -53,7 +53,7 @@ test('independent WeChat replies send a linked report as a readable attachment w
   context.after(() => runtime.stop());
   await runtime.processInboundEvent({ platform: 'weixin', externalScopeId: 'wx', text: '分析报告' });
   assert.deepEqual(texts, [answer]);
-  assert.deepEqual(files, ['\uFEFF# 报告\n\n11 台设备未返回审计。']);
+  assert.deepEqual(files, ['# 报告\n\n11 台设备未返回审计。']);
 });
 
 test('desktop-started final links survive already-streamed text and replay without duplicate attachments or completion notices', async (context) => {

@@ -38,10 +38,11 @@ test('extracts explicit local report links with Chinese, spaces, parentheses, fi
   assert.equal(extractLocalFileLinks('[网络](file://remote/share/report.txt) [共享](//host/share/file.pdf)').length, 0);
 });
 
-test('sends complete Markdown as UTF-8 TXT, preserves PDF bytes, deduplicates links and cleans temporary files', async (context) => {
+for (const extension of ['.md', '.markdown']) {
+test(`preserves ${extension} and PDF filenames and bytes, deduplicates links and cleans temporary files`, async (context) => {
   const { cwd, options, sent, notices } = fixture(context);
-  const markdown = '# 安全报告\n\n**11 台设备**无审计。\n| 主机 | 证据 |\n| A | 外连为空 |\n';
-  const report = path.join(cwd, '报告 (完整).md');
+  const markdown = '# 安全报告\r\n\r\n**11 台设备**无审计。\r\n| 主机 | 证据 |\r\n| A | 外连为空 |\r\n';
+  const report = path.join(cwd, `报告 (完整)${extension}`);
   const pdf = path.join(cwd, 'evidence.pdf');
   fs.writeFileSync(report, markdown);
   fs.writeFileSync(pdf, Buffer.from([0x25, 0x50, 0x44, 0x46, 0xff]));
@@ -50,14 +51,15 @@ test('sends complete Markdown as UTF-8 TXT, preserves PDF bytes, deduplicates li
   await files.deliver(options);
   await files.deliver(options);
   assert.equal(sent.length, 2);
-  assert.equal(path.basename(sent[0].filePath), '报告 (完整).txt');
-  assert.equal(sent[0].bytes.toString('utf8'), '\uFEFF' + markdown);
-  assert.match(sent[0].caption, /TXT/);
+  assert.equal(path.basename(sent[0].filePath), path.basename(report));
+  assert.deepEqual(sent[0].bytes, fs.readFileSync(report));
+  assert.equal(sent[0].caption, '附件：再次引用。请打开文件查看。');
   assert.deepEqual(sent[1].bytes, fs.readFileSync(pdf));
   assert.equal(notices.length, 0);
   assert.ok(sent.every((item) => !fs.existsSync(item.filePath)));
   assert.equal(fs.readFileSync(report, 'utf8'), markdown);
 });
+}
 
 test('rejects out-of-workspace, hidden credentials, missing files and directories while delivering valid reports', async (context) => {
   const { root, cwd, options, sent, notices } = fixture(context);

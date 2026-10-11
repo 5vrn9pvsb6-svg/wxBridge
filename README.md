@@ -15,6 +15,7 @@ Original upstream repository: [Gan-Xing/CodexBridge](https://github.com/Gan-Xing
 - **Follow work from your phone:** receive visible progress, the final result, and a separate completion/elapsed-time notice for shared turns, including work started on the computer.
 - **Return to your own WeChat conversation:** `/exit` restores the independent session used before sharing; the original computer session and its running task remain available.
 - **Resume output delivery:** persisted acknowledgements skip already delivered shared output after a bridge restart or reconnect.
+- **Read reports in WeChat:** local report links in completed replies are accompanied by file attachments; Markdown reports get a complete TXT reading copy.
 
 ## Supported Shared Sessions
 
@@ -40,6 +41,14 @@ After connecting WeChat and enabling the appropriate adapter:
 | `/exit` | Leave sharing and restore the previous independent WeChat session. |
 
 Setup: [Codex desktop sharing](#codex-desktop-sharing) · [Claude Code sharing](#claude-code-session-sharing) · [Windows/WSL2 configuration](#windows-wsl2-desktop-sharing).
+
+## Open Local Reports in WeChat
+
+When a completed assistant reply contains a link such as `[Analysis report](/path/to/project/outputs/report.md)`, wxBridage sends the document as a separate WeChat attachment. Open the **file attachment** to read it: the original computer-local link in the message is still not a public web address. Markdown (`.md` / `.markdown`) reports become UTF-8 `.txt` reading copies with their full contents preserved; PDF, TXT, CSV, Office documents and supported images are sent unchanged. The original file is not modified or hosted on a public website.
+
+This works for independent replies and shared Codex / Claude Code replies, including tasks started on the computer. Attachments follow the completed reply and precede the usual shared-turn completion/duration notice. Already acknowledged shared attachments are skipped after a reconnect. Existing messages and `/peek` history are not retroactively converted; ask the assistant to send the report again.
+
+Automatic delivery is limited to ordinary, readable documents **inside the selected session's workspace**, at most 3 files per turn and 25 MiB per file. Lower `CODEXBRIDGE_MAX_OUTPUT_ARTIFACTS` / `CODEXBRIDGE_MAX_ARTIFACT_SIZE_BYTES` settings also apply. Hidden/credential files, paths escaping the workspace and code examples are excluded; missing, blocked or failed uploads receive a separate notice. Paths must be accessible to the bridge host; this does not fetch files from another machine or translate foreign OS paths. File preview depends on your WeChat client; download and use its “Open with” option if necessary.
 
 ## Product Focus
 

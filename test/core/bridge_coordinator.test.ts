@@ -7264,12 +7264,13 @@ test('desktop synchronization resolves only shared bindings and exposes persiste
   const { runtime, openai } = makeRuntime();
   const scope = { platform: 'weixin', externalScopeId: 'wx-observer-binding' };
   const event = { ...scope, text: '/enter' };
-  const desktop = await runtime.services.bridgeSessions.createDetachedSession({ providerProfileId: 'openai-default', title: 'desktop' });
+  const desktop = await runtime.services.bridgeSessions.createDetachedSession({ providerProfileId: 'openai-default', title: 'desktop', cwd: '/tmp/shared-report-workspace' });
   const calls: any[] = [];
   (openai as any).observeDesktopThread = async (params: any) => { calls.push(params); };
   assert.equal(runtime.services.bridgeCoordinator.resolveDesktopSharedThread(event), null);
   await runtime.services.bridgeCoordinator.handleInboundEvent({ ...event, text: `/enter ${desktop.codexThreadId}` });
   assert.equal(runtime.services.bridgeCoordinator.resolveDesktopSharedThread(event)?.threadId, desktop.codexThreadId);
+  assert.equal(runtime.services.bridgeCoordinator.resolveOutputWorkspace({ ...event, cwd: '/tmp/other-inbound-directory' }), '/tmp/shared-report-workspace');
   assert.deepEqual(runtime.services.bridgeCoordinator.listDesktopSharedScopes(), [scope]);
   const controller = new AbortController();
   await runtime.services.bridgeCoordinator.observeDesktopSharedThread(event, { signal: controller.signal, onEvent: async () => {} });

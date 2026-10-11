@@ -4470,6 +4470,11 @@ export class BridgeCoordinator {
     return this.bridgeSessions.listDesktopSharedScopes?.() ?? [];
   }
 
+  resolveOutputWorkspace(event) {
+    const session = this.bridgeSessions.resolveScopeSession(toScopeRef(event));
+    return normalizeCwd(session?.cwd) ?? this.resolveEventCwd(event);
+  }
+
   async observeDesktopSharedThread(event, options) {
     const target = this.resolveDesktopSharedThread(event);
     if (!target) { return; }

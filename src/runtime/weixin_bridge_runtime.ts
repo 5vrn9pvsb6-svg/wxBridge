@@ -6,6 +6,7 @@ import { DesktopThreadSync, desktopThreadBindingKey, type DesktopThreadSyncCoord
 import { desktopTurnNotice } from './desktop_turn_notice.js';
 import { DesktopSyncCheckpointStore, desktopSyncKey } from './desktop_sync_checkpoint.js';
 import { deliverDesktopSegment } from './desktop_segment_delivery.js';
+import { WeixinLinkedFiles } from './weixin_linked_files.js';
 import { createI18n, type Translator } from '../i18n/index.js';
 import type { MissionHostNotification } from '../../packages/mission-control/src/index.js';
 import type {
@@ -66,6 +67,7 @@ interface PlatformPluginLike {
 }
 
 interface BridgeCoordinatorLike extends DesktopThreadSyncCoordinator {
+  resolveOutputWorkspace?(event: InboundTextEvent): string | null;
   listDesktopSharedScopes?(): Array<{ platform: string; externalScopeId: string }>;
   handleInboundEvent(
     event: InboundTextEvent,
@@ -273,8 +275,11 @@ export class WeixinBridgeRuntime {
       createDelivery: (event, signal, { bindingKey, turnId }) => {
         const key = desktopSyncKey(event.platform, event.externalScopeId, bindingKey, turnId);
         const finalAnswer = createStreamState();
+        const linkedFiles = new WeixinLinkedFiles();
+        const workspace = this.bridgeCoordinator.resolveOutputWorkspace?.(event) ?? null;
         return {
           progress: async (progress) => {
+            if (progress.outputKind === 'final_answer') { linkedFiles.collect(progress.text); }
             if (signal.aborted || this.desktopSyncCheckpoints.get(key).finalDelivered) { return; }
             const text = String(progress.delta || progress.text).trim();
             const delivered = await deliverDesktopSegment({
@@ -294,6 +299,10 @@ export class WeixinBridgeRuntime {
                 errorMessage: update.kind === 'failed' ? update.text : null,
               });
               if (delivery.delivered) { this.desktopSyncCheckpoints.markFinalDelivered(key); }
+            }
+            if (update.kind === 'complete') {
+              linkedFiles.collect(update.text);
+              await this.deliverLinkedFiles(event, linkedFiles, workspace, key, signal);
             }
             if (!signal.aborted && !this.desktopSyncCheckpoints.get(key).noticeDelivered) {
               const notice = await this.sendTextWithRetry({
@@ -594,6 +603,8 @@ export class WeixinBridgeRuntime {
     await this.flushPendingScopeNotice(event.externalScopeId);
     const streamState = createStreamState();
     const desktopCommentary = createStreamState();
+    const linkedFiles = new WeixinLinkedFiles();
+    let outputWorkspace: string | null | undefined;
     let desktopTurnKey: string | null = null;
     const desktopTurnController = new AbortController();
     let hasDesktopCommentary = false;
@@ -613,12 +624,14 @@ export class WeixinBridgeRuntime {
     try {
       const response = await this.bridgeCoordinator.handleInboundEvent(event, {
         onTurnStarted: async (meta) => {
+          outputWorkspace = this.bridgeCoordinator.resolveOutputWorkspace?.(event) ?? event.cwd ?? null;
           if (enteredTarget && meta.turnId && meta.threadId === enteredTarget.threadId) {
             desktopTurnKey = desktopSyncKey(event.platform, event.externalScopeId,
               desktopThreadBindingKey(enteredTarget), meta.turnId);
           }
         },
         onProgress: async (progress) => {
+          if (progress.outputKind === 'final_answer') { linkedFiles.collect(progress.text); }
           if (options.suppressProgressDelivery) {
             return;
           }
@@ -742,6 +755,13 @@ export class WeixinBridgeRuntime {
         await this.deliverArtifactMessages(event, artifactMessages);
       }
       const currentTarget = this.bridgeCoordinator.resolveDesktopSharedThread?.(event);
+      if (codexTurnMeta?.outputState === 'complete' && (!enteredTarget || (currentTarget
+        && desktopThreadBindingKey(currentTarget) === desktopThreadBindingKey(enteredTarget)))) {
+        linkedFiles.collect(finalText);
+        await this.deliverLinkedFiles(event, linkedFiles,
+          outputWorkspace === undefined ? this.bridgeCoordinator.resolveOutputWorkspace?.(event) ?? event.cwd : outputWorkspace,
+          desktopTurnKey, desktopTurnController.signal, artifactMessages);
+      }
       if (desktopTurnKey && codexTurnMeta?.finalSource === 'desktop_rollout' && response.meta?.runtimeDelivery?.delivered) {
         this.desktopSyncCheckpoints.markFinalDelivered(desktopTurnKey);
       }
@@ -1249,6 +1269,23 @@ export class WeixinBridgeRuntime {
       error: this.i18n.t('runtime.error.unknownDeliveryFailure'),
       errorCode: null,
     };
+  }
+
+  private async deliverLinkedFiles(
+    event: InboundTextEvent,
+    files: WeixinLinkedFiles,
+    cwd: string | null | undefined,
+    key: string | null,
+    signal: AbortSignal,
+    existingArtifacts: OutputArtifact[] = [],
+  ): Promise<void> {
+    await files.deliver({
+      cwd, signal, i18n: this.i18n,
+      checkpoint: key ? { store: this.desktopSyncCheckpoints, key } : null,
+      existingPaths: existingArtifacts.map((artifact) => artifact.path),
+      sendFile: (filePath, caption) => this.sendMediaWithRetry({ externalScopeId: event.externalScopeId, filePath, caption }),
+      sendNotice: (content) => this.sendTextWithRetry({ externalScopeId: event.externalScopeId, content }),
+    });
   }
 
   async deliverArtifactMessages(

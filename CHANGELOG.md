@@ -7,6 +7,13 @@ All notable changes to wxBridage are documented here.
 - Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
 - Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
 
+## 0.1.20 - 2026-10-11
+
+- Send documents explicitly linked in completed assistant replies as WeChat attachments, including independent replies and both desktop- and WeChat-started shared turns for Codex and Claude Code.
+- Create UTF-8 TXT reading copies of Markdown reports, preserving their complete contents and the original files; forward PDFs, Office documents, CSVs and supported images unchanged.
+- Restrict automatic delivery to readable documents inside the current session workspace, with file size/count limits, protected-path checks, temporary snapshot cleanup and persistent shared-turn attachment acknowledgements.
+- Preserve text deduplication and completion/duration notices; report missing, blocked or failed attachments separately.
+
 ## 0.1.19 - 2026-10-11
 
 - Fix Windows test portability: check POSIX checkpoint file modes only on Unix platforms and use a Windows temporary directory for portable Claude session tests.

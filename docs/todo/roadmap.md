@@ -1,12 +1,13 @@
-# CodexBridge Roadmap TODO
+# wxBridage Roadmap TODO
 
-This document is the top-level roadmap for CodexBridge.
+This document is the top-level roadmap for wxBridage.
 
 It should stay short and stable. Detailed implementation checklists belong in
 feature-specific TODO files instead of being expanded here.
 
 ## Current Status
 
+- Product center: sharing existing Codex desktop and Claude Code sessions with WeChat, using explicit entry/exit and synchronized visible output.
 - `packages/codex-gateway`: paused
 - `packages/mission-control`: paused
 - `packages/codex-native-api`: retained for possible future work, but currently paused
@@ -14,7 +15,7 @@ feature-specific TODO files instead of being expanded here.
 
 ## Immutable Target
 
-CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流。
+wxBridage 的核心目标是通过微信继续电脑上已有的 Codex 和 Claude Code 会话，沿用上下文、工作区和权限，可靠同步输出、结束状态与耗时，并在退出共享后恢复原有微信独立会话。
 
 This target is stable. The route, package layout, and branch strategy may
 change, but every new task should be judged against whether it advances this
@@ -77,6 +78,8 @@ Reference sources currently tracked for later reuse:
 
 Already landed and no longer part of the active detailed backlog:
 
+- Explicit Codex desktop and Claude Code session sharing through `/enter`, `/enter codex`, `/enter claude`, `/status` and `/exit`
+- Visible shared output, completion/duration notices and persisted delivery acknowledgements
 - `/review` for uncommitted changes and base-branch review
 - `/plan` session-level native planning mode toggle
 - `/skills`, `/apps`, `/plugins`, and `/mcp` visibility and control surfaces
@@ -89,13 +92,23 @@ Already landed and no longer part of the active detailed backlog:
 
 Important clarification:
 
-- `/open <thread>` remains the practical “resume this old session” path, so a separate `/resume` command is not a current priority
+- `/enter` is the existing-PC-session sharing path; `/open <thread>` retains independent-session semantics and does not enable sharing
 - `/status` already exposes working-directory and session context well enough for now, so a separate `/cwd` command is not a current priority
 
 ## Cross-Cutting Priorities
 
 These are the priorities that still belong in the shared roadmap because they
 affect the product as a whole, not just one package.
+
+### P0: Desktop session sharing
+
+- [x] Implement explicit entry/exit and original independent-session restoration for Codex and Claude Code
+- [x] Implement observation of running shared turns, visible-output delivery, completion/duration notices and restart checkpoints
+- [ ] Complete real Windows/WSL2 acceptance for the Codex adapter, including PC-visible messages, reconnect/restart behavior and locked-screen operation
+- [ ] Complete live WeChat/Claude Code acceptance, including Channel opt-in, completion/duration and local approval behavior
+- [ ] Track desktop IPC and Claude Channel compatibility as their upstream implementations evolve
+
+Implementation and platform acceptance are separate. See the [Windows/WSL2 verification record](../design/windows-wsl-sharing-architecture.md) and [Claude sharing verification](../design/claude-shared-sessions.md) for the evidence currently available.
 
 ### P0: WeChat runtime reliability
 
@@ -119,7 +132,7 @@ affect the product as a whole, not just one package.
 - [ ] Add optional sync targets for assistant records, such as Notion, Google Drive, or Calendar, while keeping local records as source of truth
 - [ ] Design a browser-preview workflow that approximates Codex app browser comments and browser-use results in chat
 - [ ] Design a companion-based computer-use workflow for desktop GUI tasks with explicit approvals and app allowlists
-- [ ] Decide whether these desktop-native abilities belong in CodexBridge itself or in a separate local companion service
+- [ ] Decide whether these desktop-native abilities belong in wxBridage itself or in a separate local companion service
 
 ### P2: Codex Gateway summary
 

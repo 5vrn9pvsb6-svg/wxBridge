@@ -7134,6 +7134,89 @@ test('/enter explicitly enables desktop sharing and /exit creates a standalone t
   );
 });
 
+test('desktop catalog binding uses its prepared target, supports read-only paging, and restores independent state', async () => {
+  const { runtime, openai } = makeRuntime();
+  const coordinator = runtime.services.bridgeCoordinator;
+  const scope = { platform: 'weixin', externalScopeId: 'wx-desktop-target' };
+  const independent = await coordinator.handleInboundEvent({ ...scope, text: 'independent context' });
+  const identity = { key: 'target-windows', hostId: 'local', label: 'Windows' };
+  const desktop = { threadId: independent.session!.codexThreadId, title: 'Desktop copy', cwd: '/desktop' };
+  let generalReads = 0;
+  let listCalls = 0;
+  (openai as any).listDesktopThreads = async ({ cursor, searchTerm }) => {
+    listCalls++;
+    return {
+      desktopTarget: identity,
+      items: searchTerm === 'no-match' ? [] : Array.from({ length: cursor ? 2 : 10 }, (_, i) => ({ ...desktop, title: searchTerm || 'Desktop ' + i })),
+      nextCursor: cursor ? null : 'desktop-page-2',
+    };
+  };
+  (openai as any).prepareDesktopThreadSharing = async ({ threadId, expectedTargetKey }) => {
+    assert.equal(threadId, desktop.threadId);
+    assert.equal(expectedTargetKey, identity.key);
+    return { thread: desktop, desktopTarget: identity };
+  };
+  (openai as any).getDesktopTarget = () => identity;
+  (openai as any).readThread = async () => { generalReads++; assert.fail('Shared entry must not use the independent reader'); };
+  (openai as any).readDesktopThread = async ({ expectedTargetKey }) => {
+    assert.equal(expectedTargetKey, identity.key);
+    return desktop;
+  };
+  const choices = await coordinator.handleInboundEvent({ ...scope, text: '/enter' });
+  const text = choices.messages.map(message => message.text).join('\n');
+  assert.match(text, /桌面主机：Windows/u);
+  assert.doesNotMatch(text, /\/threads del/u);
+  assert.match((await coordinator.handleInboundEvent({ ...scope, text: '/next' })).messages[0].text, /第 2 页/u);
+  await coordinator.handleInboundEvent({ ...scope, text: '/prev' });
+  await coordinator.handleInboundEvent({ ...scope, text: '/search Desktop' });
+  assert.equal(listCalls, 4);
+  await coordinator.handleInboundEvent({ ...scope, text: '/search no-match' });
+  const emptySelection = await coordinator.handleInboundEvent({ ...scope, text: '/enter 1' });
+  assert.equal(emptySelection.session!.bridgeSessionId, independent.session!.bridgeSessionId);
+  assert.equal(runtime.services.bridgeSessions.resolveScopeExecutionMode(scope), 'standalone');
+  await coordinator.handleInboundEvent({ ...scope, text: '/enter' });
+  await coordinator.handleInboundEvent({ ...scope, text: '/peek 1' });
+  const blocked = await coordinator.handleInboundEvent({ ...scope, text: '/threads del 1' });
+  assert.match(blocked.messages[0].text, /桌面共享列表/u);
+  const entered = await coordinator.handleInboundEvent({ ...scope, text: '/enter 1' });
+  assert.notEqual(entered.session!.bridgeSessionId, independent.session!.bridgeSessionId);
+  const binding = runtime.services.bridgeSessions.resolveScopeBinding(scope);
+  assert.equal(binding?.desktopTarget?.key, identity.key);
+  assert.equal(binding?.standaloneBridgeSessionId, independent.session!.bridgeSessionId);
+  assert.equal(generalReads, 0);
+  const status = await coordinator.handleInboundEvent({ ...scope, text: '/status' });
+  assert.match(status.messages.map(message => message.text).join('\n'), /桌面主机：Windows/u);
+  for (const command of ['retry', 'compact', 'goal', 'review', 'stop']) {
+    const unsupported = await coordinator.handleInboundEvent({ ...scope, text: '/' + command });
+    assert.match(unsupported.messages[0].text, /Codex 桌面共享暂不支持/u);
+  }
+  assert.equal(openai.resumeThreadCalls.length, 0);
+  assert.equal(openai.interruptTurnCalls.length, 0);
+  assert.equal(openai.startReviewCalls.length, 0);
+  assert.equal(openai.compactThreadCalls.length, 0);
+  assert.equal(generalReads, 0);
+  (openai as any).getDesktopTarget = () => { throw new Error('storage gone'); };
+  const exited = await coordinator.handleInboundEvent({ ...scope, text: '/exit' });
+  assert.equal(exited.session!.bridgeSessionId, independent.session!.bridgeSessionId);
+  assert.equal(runtime.services.bridgeSessions.resolveScopeBinding(scope)?.desktopTarget, null);
+});
+
+test('desktop failures never enter independent thread recovery or resubmit a possibly dispatched message', async () => {
+  const { runtime, openai } = makeRuntime();
+  const scope = { platform: 'weixin', externalScopeId: 'wx-desktop-no-retry' };
+  const coordinator = runtime.services.bridgeCoordinator;
+  const existing = await coordinator.handleInboundEvent({ ...scope, text: 'context' });
+  await coordinator.handleInboundEvent({ ...scope, text: '/enter ' + existing.session!.codexThreadId });
+  const threadStarts = openai.startThreadCalls.length;
+  let attempts = 0;
+  (openai as any).startTurn = async () => { attempts++; throw new Error('thread not found; failed to load rollout'); };
+  await coordinator.handleInboundEvent({ ...scope, text: 'submit once' });
+  assert.equal(attempts, 1);
+  assert.equal(openai.startThreadCalls.length, threadStarts);
+  assert.equal(runtime.services.bridgeSessions.resolveScopeSession(scope)?.codexThreadId, existing.session!.codexThreadId);
+  assert.equal(runtime.services.bridgeSessions.resolveScopeExecutionMode(scope), 'desktop_shared');
+});
+
 test('/enter lists ten desktop thread choices per page and preserves paging', async () => {
   const { runtime } = makeRuntime();
   for (let index = 1; index <= 12; index += 1) {

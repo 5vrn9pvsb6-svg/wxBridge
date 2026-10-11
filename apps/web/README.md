@@ -1,6 +1,6 @@
-# CodexBridge Web Console
+# wxBridage Web Console
 
-Thin Next.js control panel on top of the existing CodexBridge core.
+Thin Next.js control panel on top of the existing wxBridage core.
 
 ## Default port
 

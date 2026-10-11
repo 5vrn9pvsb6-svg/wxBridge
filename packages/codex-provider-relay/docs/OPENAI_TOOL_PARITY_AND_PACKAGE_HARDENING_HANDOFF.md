@@ -7,7 +7,7 @@
 最终目标：
 
 ```text
-Codex app-server / CodexBridge / CodexNext / 任意宿主应用
+Codex app-server / wxBridage / CodexNext / 任意宿主应用
       ↓
 @codexbridge/codex-provider-relay
       ↓
@@ -19,7 +19,7 @@ DeepSeek / Qwen / OpenRouter / MiniMax / Claude-compatible relay / 其他厂商
 ```
 
 这个包要让其他厂商模型也能在 Codex 的原生工具调用闭环里工作。  
-不要把 CodexBridge / CodexNext 的 session、UI、平台适配器、业务状态放进这个包。
+不要把 wxBridage / CodexNext 的 session、UI、平台适配器、业务状态放进这个包。
 
 ## 当前状态判断
 
@@ -65,7 +65,7 @@ DeepSeek / Qwen / OpenRouter / MiniMax / Claude-compatible relay / 其他厂商
 
 本轮不要做：
 
-- 不要迁移 CodexBridge / CodexNext 业务状态进包
+- 不要迁移 wxBridage / CodexNext 业务状态进包
 - 不要默认接 Qdrant / LanceDB / pgvector
 - 不要默认引入 sqlite driver
 - 不要默认执行危险 shell / computer / code interpreter 行为
@@ -940,4 +940,4 @@ const state = await runtime.start();
 // state.codexCliArgs can launch Codex app-server.
 ```
 
-这才是“独立成包”的判断标准：CodexBridge 只是 consumer，CodexNext 也是 consumer，其他 Codex app-server 也能直接用。
+这才是“独立成包”的判断标准：wxBridage 只是 consumer，CodexNext 也是 consumer，其他 Codex app-server 也能直接用。

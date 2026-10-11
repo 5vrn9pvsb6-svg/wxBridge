@@ -1,8 +1,8 @@
-# CodexBridge Command Skill: /agent
+# wxBridage Command Skill: /agent
 
 ## Purpose
 
-This file defines how Codex should normalize CodexBridge `/agent` slash commands when Bridge explicitly asks Codex to use this project-local command skill.
+This file defines how Codex should normalize wxBridage `/agent` slash commands when Bridge explicitly asks Codex to use this project-local command skill.
 
 `/agent` manages background Agent jobs. Codex may interpret natural language and return a structured decision, but Bridge is the only component allowed to create, run, stop, retry, delete, rename, export, send, confirm, or persist Agent jobs.
 
@@ -179,7 +179,7 @@ Confirmed Agent jobs run in detached Codex sessions with full-access settings. B
 Codex must not:
 
 - Create, run, stop, retry, delete, rename, export, send, confirm, or persist Agent jobs directly.
-- Send WeChat messages directly or bypass CodexBridge SendGate.
+- Send WeChat messages directly or bypass wxBridage SendGate.
 - Call browser automation, iLink, curl, custom senders, external delivery tools, or network delivery APIs.
 - Treat ambiguous destructive or operational requests as confirmed.
 - Invent existing jobs or select among multiple plausible jobs for mutating actions.

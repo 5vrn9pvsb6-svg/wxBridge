@@ -1,6 +1,6 @@
 # CodexProvider Recipes
 
-These recipes describe how a host app should wire `@codex-provider/core` without depending on CodexBridge internals.
+These recipes describe how a host app should wire `@codex-provider/core` without depending on wxBridage internals.
 
 Historical names under `@codexbridge/codex-provider-relay` and `CodexProviderRelay*` remain as deprecated aliases during the stabilization cycle.
 

@@ -179,6 +179,8 @@ export interface ProviderThreadStartResult {
 export interface ProviderThreadListResult {
   items: ProviderThreadSummary[];
   nextCursor: string | null;
+  desktopTarget?: import('./core.js').DesktopTargetIdentity;
+  truncated?: boolean;
 }
 
 export interface ProviderModelInfo {
@@ -446,10 +448,17 @@ export interface ProviderPluginContract {
   displayName: string;
   isDesktopThreadRelayAvailable?(event: ProviderTurnEvent): boolean;
   /** Verify the selected owner before changing a chat's shared binding. */
-  prepareDesktopThreadSharing?(params: { threadId: string }): Promise<void>;
+  prepareDesktopThreadSharing?(params: { threadId: string; expectedTargetKey?: string | null }): Promise<void | {
+    thread: ProviderThreadSummary;
+    desktopTarget: import('./core.js').DesktopTargetIdentity;
+  }>;
+  listDesktopThreads?(params: { providerProfile: ProviderProfile; limit?: number; cursor?: string | null; searchTerm?: string | null }): Promise<ProviderThreadListResult>;
+  readDesktopThread?(params: { providerProfile: ProviderProfile; threadId: string; expectedTargetKey?: string | null }): Promise<ProviderThreadSummary | null>;
+  getDesktopTarget?(): import('./core.js').DesktopTargetIdentity | null;
   interruptDesktopThread?(params: { threadId: string }): Promise<boolean>;
   observeDesktopThread?(params: {
     threadId: string;
+    expectedTargetKey?: string | null;
     signal: AbortSignal;
     onEvent: (event: ProviderDesktopThreadEvent) => Promise<void> | void;
   }): Promise<void>;

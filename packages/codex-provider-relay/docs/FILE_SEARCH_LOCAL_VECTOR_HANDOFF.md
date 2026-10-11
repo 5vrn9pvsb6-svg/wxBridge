@@ -5,7 +5,7 @@
 仓库：Gan-Xing/CodexBridge  
 目标包：`packages/codex-provider-relay`
 
-当前方向是让 `file_search` 在 relay-emulated hosted tool 模式下支持本地项目文件检索，并且保持 package 可独立复用，不能依赖 CodexBridge / CodexNext 的宿主状态。
+当前方向是让 `file_search` 在 relay-emulated hosted tool 模式下支持本地项目文件检索，并且保持 package 可独立复用，不能依赖 wxBridage / CodexNext 的宿主状态。
 
 核心目标不是“马上接 Qdrant / LanceDB / pgvector”，而是先把本地向量索引链路稳定下来，使后续 SQLite / 外部向量库都只是替换 store 或 adapter，不改变上层 `CodexProviderRelayFileSearchSource` API。
 
@@ -291,7 +291,7 @@ RRF 最低实现：
 - code AST chunker
 - PDF/docx parsing
 - host-app session store
-- CodexBridge / CodexNext 专属逻辑
+- wxBridage / CodexNext 专属逻辑
 
 ## 推荐测试命令
 

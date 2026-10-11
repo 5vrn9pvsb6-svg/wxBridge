@@ -8,6 +8,10 @@ import type { CodexTurnInput } from './app_client.js';
 import type { ProviderTurnResult, ProviderTurnProgress, ProviderDesktopThreadEvent } from '../../types/provider.js';
 import type { InboundTextEvent } from '../../types/platform.js';
 import { CodexDesktopIpcClient, type DesktopTurnSubmitter } from './desktop_ipc_client.js';
+import { resolveCodexDesktopTarget, assertDesktopTarget, desktopTargetIdentity, type CodexDesktopTarget } from './desktop_target.js';
+import { desktopTransportFactory } from './desktop_ipc_transport.js';
+import { getCodexHostPlatform } from './host/index.js';
+import { CodexDesktopSessionCatalog, findDesktopRollouts, readDesktopRolloutSummary } from './desktop_session_catalog.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_SUBMIT_DELAY_MS = 1_200;
@@ -55,6 +59,8 @@ export interface CodexDesktopThreadRelayOptions {
   rolloutReader?: DesktopRolloutReader;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  target?: CodexDesktopTarget;
+  configurationError?: Error;
 }
 
 export interface CodexDesktopThreadRelayStartParams {
@@ -67,6 +73,9 @@ export interface CodexDesktopThreadRelayStartParams {
 }
 
 export class CodexDesktopThreadRelay {
+  readonly target?: CodexDesktopTarget;
+  readonly catalog?: CodexDesktopSessionCatalog;
+  private readonly configurationError?: Error;
   private readonly enabled: boolean;
 
   private readonly transport: 'ipc' | 'gui';
@@ -113,8 +122,13 @@ export class CodexDesktopThreadRelay {
     rolloutReader = new CodexDesktopRolloutReader(),
     sleep = wait,
     now = () => Date.now(),
+    target,
+    configurationError,
   }: CodexDesktopThreadRelayOptions = {}) {
     this.enabled = enabled;
+    this.target = target;
+    this.catalog = target ? new CodexDesktopSessionCatalog(target) : undefined;
+    this.configurationError = configurationError;
     this.transport = transport;
     this.submitter = submitter;
     this.platform = platform;
@@ -145,6 +159,25 @@ export class CodexDesktopThreadRelay {
     return this.isAvailableForEvent(event) && isDesktopSharedThreadEvent(event);
   }
 
+  getTarget() {
+    if (this.configurationError) { throw this.configurationError; }
+    return this.target ? desktopTargetIdentity(this.target) : null;
+  }
+
+  async prepareSharing(threadId: string, expectedTargetKey?: string | null) {
+    if (this.configurationError) { throw this.configurationError; }
+    if (!this.target || !this.catalog) { throw new Error('Desktop target is not configured'); }
+    const identity = desktopTargetIdentity(this.target);
+    if (expectedTargetKey && expectedTargetKey !== identity.key) { assertDesktopTarget(this.target, expectedTargetKey); }
+    const thread = this.catalog.read(threadId);
+    if (!thread) { throw new Error('未找到所选桌面会话的记录，请刷新 /enter 并检查共享目录。'); }
+    if (this.transport === 'ipc') {
+      if (!this.submitter.probeThreadOwner) { throw new Error('Desktop owner probing is unavailable'); }
+      await this.submitter.probeThreadOwner(threadId);
+    }
+    return { thread, desktopTarget: identity };
+  }
+
   async startTurn(params: CodexDesktopThreadRelayStartParams): Promise<ProviderTurnResult> {
     return this.runExclusive(async () => {
       try {
@@ -155,16 +188,20 @@ export class CodexDesktopThreadRelay {
     });
   }
 
-  async observeThread({ threadId, signal, onEvent }: {
+  async observeThread({ threadId, signal, onEvent, expectedTargetKey }: {
     threadId: string;
     signal: AbortSignal;
     onEvent: (event: ProviderDesktopThreadEvent) => Promise<void> | void;
+    expectedTargetKey?: string | null;
   }): Promise<void> {
+    if (this.configurationError) { throw this.configurationError; }
+    if (this.target) { assertDesktopTarget(this.target, expectedTargetKey); }
     const cursor = await this.rolloutReader.snapshot(threadId);
     const ignored = new Set<string>();
     let events = cursor.activeEvents ?? [];
     const seen = new Set<string>();
     while (!signal.aborted) {
+      if (this.target) { assertDesktopTarget(this.target, expectedTargetKey); }
       // Keep the read cursor until submission ownership is known. In particular,
       // a lost IPC acknowledgement must not discard a possibly accepted turn.
       if (this.ownedThreads.has(threadId)) {
@@ -207,12 +244,18 @@ export class CodexDesktopThreadRelay {
     onTurnStarted = null,
     onProgress = null,
   }: CodexDesktopThreadRelayStartParams): Promise<ProviderTurnResult> {
+    if (this.configurationError) { throw this.configurationError; }
     if (!this.shouldRelay({ event, input })) {
       throw new Error('Codex desktop thread relay cannot handle this turn');
     }
-    if (this.platform !== 'darwin') {
-      throw new Error('Codex desktop thread relay is only supported on macOS');
+    const host = getCodexHostPlatform(this.platform);
+    if (this.transport === 'gui' && !host.supportsDesktopGui) {
+      throw new Error('GUI desktop relay is only supported on macOS; use ipc on Windows/WSL2');
     }
+    if (this.target) {
+      const metadata = event.metadata?.codexbridge as Record<string, unknown> | undefined;
+      assertDesktopTarget(this.target, typeof metadata?.desktopTargetKey === 'string' ? metadata.desktopTargetKey : null);
+    } else if (host.requiresDesktopTarget) { throw new Error('Desktop target is required on Windows/WSL2'); }
     const prompt = resolveRelayPrompt(event, inputText);
     if (!prompt) {
       throw new Error('Codex desktop thread relay requires non-empty text');
@@ -234,9 +277,8 @@ export class CodexDesktopThreadRelay {
       await onTurnStarted?.({ turnId: submittedTurnId, threadId });
     } else {
       const deepLink = buildCodexDesktopThreadUrl(threadId, prompt);
-      await this.runCommand('/usr/bin/open', [deepLink]);
-      await this.sleep(this.submitDelayMs);
-      await this.runCommand('/usr/bin/osascript', ['-e', buildSubmitAppleScript(this.appName)]);
+      await host.submitDesktopGui({ deepLink, appName: this.appName, submitDelayMs: this.submitDelayMs,
+        runCommand: this.runCommand, sleep: this.sleep });
     }
 
     return this.waitForRelayedTurn({
@@ -389,7 +431,7 @@ export class CodexDesktopRolloutReader implements DesktopRolloutReader {
       const size = readFileSize(filePath);
       const length = Math.min(size, MAX_ROLLOUT_READ_BYTES);
       const start = size - length;
-      const handle = await fs.promises.open(filePath, 'r');
+      const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
       let text = '';
       try {
         const buffer = Buffer.alloc(length);
@@ -445,7 +487,9 @@ export class CodexDesktopRolloutReader implements DesktopRolloutReader {
         continue;
       }
       const length = Math.min(size - start, MAX_ROLLOUT_READ_BYTES);
-      const handle = await fs.promises.open(filePath, 'r');
+      const summary = readDesktopRolloutSummary(path.dirname(this.sessionsDir), filePath);
+      if (summary?.threadId !== threadId) { throw new Error('Desktop rollout identity changed'); }
+      const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
       let text = '';
       try {
         const buffer = Buffer.allocUnsafe(length);
@@ -479,7 +523,10 @@ export class CodexDesktopRolloutReader implements DesktopRolloutReader {
     if (!refresh && cached && Date.now() - cached.refreshedAt < 30_000) {
       return cached.paths;
     }
-    const paths = findRolloutFiles(this.sessionsDir, threadId);
+    const paths = findDesktopRollouts(this.sessionsDir, threadId).files.filter(file => {
+      try { return readDesktopRolloutSummary(path.dirname(this.sessionsDir), file)?.threadId === threadId; }
+      catch { return false; }
+    }).sort((a, b) => readFileMtime(a) - readFileMtime(b)).slice(-20);
     this.fileCache.set(threadId, { paths, refreshedAt: Date.now() });
     if (this.fileCache.size > 100) { this.fileCache.delete(this.fileCache.keys().next().value!); }
     return paths;
@@ -493,15 +540,32 @@ export function createCodexDesktopThreadRelayFromEnv(
   if (!parseBoolean(env.CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD, false)) {
     return null;
   }
-  const transport = normalizeNonEmptyString(env.CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT) ?? 'ipc';
-  if (transport !== 'ipc' && transport !== 'gui') { throw new Error('Invalid Codex desktop transport; use ipc or gui'); }
+  let transport: 'ipc' | 'gui';
+  let target: CodexDesktopTarget;
+  try {
+    const selected = normalizeNonEmptyString(env.CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT) ?? 'ipc';
+    if (selected !== 'ipc' && selected !== 'gui') { throw new Error('Invalid Codex desktop transport; use ipc or gui'); }
+    transport = selected;
+    target = resolveCodexDesktopTarget({ env, platform });
+    if (transport === 'gui' && !getCodexHostPlatform(platform).supportsDesktopGui) { throw new Error('Windows/WSL2 desktop sharing requires ipc transport'); }
+  } catch (error) {
+    // Keep /status, /exit and independent execution available after bad setup.
+    // Every shared operation still fails before reading or submitting anything.
+    const configurationError = error instanceof Error ? error : new Error('Invalid desktop sharing configuration');
+    return new CodexDesktopThreadRelay({
+      enabled: true, platform, configurationError,
+      submitter: { submitTurn: async () => { throw configurationError; } },
+    });
+  }
   return new CodexDesktopThreadRelay({
     enabled: true,
     transport,
     submitter: new CodexDesktopIpcClient({
-      socketPath: normalizeNonEmptyString(env.CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET)
-        ?? path.join(env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'ipc', 'ipc.sock'),
+      hostId: target.hostId,
+      transportFactory: desktopTransportFactory(target),
     }),
+    target,
+    rolloutReader: new CodexDesktopRolloutReader(path.join(target.home, 'sessions')),
     platform,
     appName: normalizeNonEmptyString(env.CODEXBRIDGE_CODEX_DESKTOP_APP_NAME) ?? 'ChatGPT',
     submitDelayMs: parseInteger(env.CODEXBRIDGE_CODEX_DESKTOP_SUBMIT_DELAY_MS, DEFAULT_SUBMIT_DELAY_MS),
@@ -521,19 +585,6 @@ export function buildCodexDesktopThreadUrl(threadId: string, prompt: string): st
   return url.toString();
 }
 
-function buildSubmitAppleScript(appName: string): string {
-  const escapedAppName = appName.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
-  return [
-    `tell application "${escapedAppName}" to activate`,
-    'delay 0.2',
-    'tell application "System Events"',
-    `  tell process "${escapedAppName}"`,
-    '    set frontmost to true',
-    '    key code 36',
-    '  end tell',
-    'end tell',
-  ].join('\n');
-}
 
 function parseRolloutEvent(line: string, cursor: RolloutCursor): RolloutEvent | null {
   const trimmed = line.trim();
@@ -631,43 +682,8 @@ function readTurnTiming(record: any, cursor: RolloutCursor, turnId: string): { d
   return start !== undefined && end !== undefined && end >= start ? { durationMs: end - start } : {};
 }
 
-function findRolloutFiles(rootDir: string, threadId: string): string[] {
-  const normalizedThreadId = normalizeNonEmptyString(threadId);
-  if (!normalizedThreadId || !/^[A-Za-z0-9_-]+$/u.test(normalizedThreadId)) {
-    return [];
-  }
-  const results: Array<{ path: string; mtimeMs: number }> = [];
-  const stack = [rootDir];
-  let visited = 0;
-  while (stack.length > 0 && visited < 5_000) {
-    const directory = stack.pop();
-    if (!directory) {
-      continue;
-    }
-    visited += 1;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(directory, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(entryPath);
-      } else if (entry.isFile() && entry.name.includes(normalizedThreadId) && entry.name.endsWith('.jsonl')) {
-        try {
-          results.push({ path: entryPath, mtimeMs: fs.statSync(entryPath).mtimeMs });
-        } catch {
-          // The desktop may rotate a rollout between directory enumeration and stat.
-        }
-      }
-    }
-  }
-  return results
-    .sort((left, right) => left.mtimeMs - right.mtimeMs)
-    .slice(-20)
-    .map((entry) => entry.path);
+function readFileMtime(filePath: string): number {
+  try { return fs.statSync(filePath).mtimeMs; } catch { return 0; }
 }
 
 function readFileSize(filePath: string): number {

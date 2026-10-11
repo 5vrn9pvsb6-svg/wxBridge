@@ -1,8 +1,8 @@
-# CodexBridge Command Skill: Assistant Records
+# wxBridage Command Skill: Assistant Records
 
 ## Purpose
 
-This document defines how Codex should understand and normalize CodexBridge assistant-record slash commands when Bridge explicitly asks Codex to use this command skill.
+This document defines how Codex should understand and normalize wxBridage assistant-record slash commands when Bridge explicitly asks Codex to use this command skill.
 
 Assistant records are personal WeChat records stored by Bridge. Codex may classify, route, or rewrite natural language, but Bridge is the only component allowed to create, update, complete, cancel, archive, confirm, or persist records.
 

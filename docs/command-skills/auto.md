@@ -1,8 +1,8 @@
-# CodexBridge Command Skill: /auto
+# wxBridage Command Skill: /auto
 
 ## Purpose
 
-This document defines how Codex should understand and normalize the CodexBridge `/auto` slash command when Bridge explicitly asks Codex to use this command skill.
+This document defines how Codex should understand and normalize the wxBridage `/auto` slash command when Bridge explicitly asks Codex to use this command skill.
 
 `/auto` manages scheduled automation jobs. Codex may help interpret natural language, but Bridge is the only component allowed to create, update, pause, resume, delete, or persist automation jobs.
 
@@ -453,7 +453,7 @@ When both pause and delete are plausible:
 Input:
 
 ```text
-/auto 每天早上8点、中午13点、下午17点半检查 CodexBridge 助理记录并发微信
+/auto 每天早上8点、中午13点、下午17点半检查 wxBridage 助理记录并发微信
 ```
 
 Output:
@@ -491,7 +491,7 @@ Output:
         "label": "daily 17:30 UTC"
       }
     ],
-    "task": "检查 CodexBridge 助理记录里的代办、提醒、逾期事项、近期截止、待确认事项和需要注意的事情，输出适合微信阅读的中文助理检查。只返回最终文本，不要寻找微信连接器，不要直接调用微信接口；把最终结果作为 final answer 返回，由 CodexBridge 通过正常 SendGate 队列发送到微信。"
+    "task": "检查 wxBridage 助理记录里的代办、提醒、逾期事项、近期截止、待确认事项和需要注意的事情，输出适合微信阅读的中文助理检查。只返回最终文本，不要寻找微信连接器，不要直接调用微信接口；把最终结果作为 final answer 返回，由 wxBridage 通过正常 SendGate 队列发送到微信。"
   },
   "renderHint": {
     "title": "自动化草案 | 助理记录检查",
@@ -624,4 +624,3 @@ Supported pending operation types:
 - rename existing job
 
 If there is no pending operation, Bridge should return the local "no draft" message.
-

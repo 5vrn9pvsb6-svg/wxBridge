@@ -2,7 +2,7 @@
 
 Document version: 1.0 — 2026-10-11
 
-Status: architecture proposal awaiting confirmation. [Requirements version 1.0](windows-wsl-sharing-requirements.md) were confirmed by the user's “确认，请继续”. No executable implementation or Windows/WSL end-to-end verification is recorded here.
+Status: architecture version 1.0 confirmed by the user's “好的，确认。继续” on 2026-10-11. [Requirements version 1.0](windows-wsl-sharing-requirements.md) were confirmed earlier. Version 0.1.17 is implemented with local verification recorded below. Windows/WSL end-to-end acceptance remains pending.
 
 ## Decision and system boundary
 
@@ -42,7 +42,7 @@ The helper script must ship in both the source distribution and the installed ap
 
 ## Modules and allowed dependencies
 
-Paths below identify proposed new files and existing integration points; they do not indicate implementation has already happened.
+Paths below identify the approved module boundaries and integration points. Actual implementation and verification evidence is recorded separately below.
 
 | Module | Ownership and contract |
 | --- | --- |
@@ -178,7 +178,7 @@ After architecture confirmation: implement the transport/target boundary, deskto
 
 ## Evidence and design limitations
 
-Source review found that current shared submission explicitly rejects non-macOS platforms; IPC owner discovery hardcodes `local`; rollout discovery defaults to the bridge process home; and `/enter` binding/listing currently reads through the general provider. These are the integration boundaries addressed above.
+Baseline source review found that shared submission explicitly rejected non-macOS platforms; IPC owner discovery hardcoded `local`; rollout discovery defaulted to the bridge process home; and `/enter` binding/listing read through the general provider. These are the integration boundaries addressed above.
 
 Read-only inspection of the installed macOS desktop's common bundle found the Windows pipe path, `remote-wsl:` host construction using URI-encoded distribution names, and the local/non-local request-version behavior. No Windows process was connected, no real prompt was submitted, and no live WeChat message was sent in this architecture phase. Coordination IPC is internal and may change independently of the public App Server API.
 
@@ -191,10 +191,64 @@ Official references informing this proposal:
 - [NamedPipeClientStream constructors](https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.namedpipeclientstream.-ctor?view=netframework-4.8.1) — local server selection and explicit impersonation/handle options.
 - [GetNamedPipeServerProcessId](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeserverprocessid), [OpenProcessToken](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken), and [GetTokenInformation](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation) — Windows process/token identity queries for the proposed user-boundary check.
 
-Mermaid diagrams are saved as source; rendered-diagram verification has not been performed. This document is a design proposal and self-review, not an independent security review or a platform acceptance report.
+Mermaid diagrams are saved as source; rendered-diagram verification has not been performed. This document records the confirmed design, implementation evidence and self-review; it is not an independent security review or a Windows/WSL acceptance report.
 
 ## Confirmation
 
 - Requirements version 1.0: confirmed by the user's “确认，请继续” on 2026-10-11.
-- Architecture version 1.0: awaiting confirmation of the transport, explicit target configuration, desktop-specific catalog/binding, compatibility rules, and verification limits described above.
+- Architecture version 1.0: confirmed by the user's “好的，确认。继续” on 2026-10-11, covering the transport, explicit target configuration, desktop-specific catalog/binding, compatibility rules, and verification limits described above.
 - A materially different transport, public network exposure, ordinary CLI attachment, changed desktop permissions, or automatic live deployment requires revisiting the affected scope.
+
+## Implementation and verification — 2026-10-11
+
+Product version changes from 0.1.16 to 0.1.17 in `package.json` and both root entries in `package-lock.json`; `src/providers/codex/app_client.ts` now advertises 0.1.17 instead of its stale 0.1.13 client metadata. The changelog, environment example and both READMEs are updated. Both READMEs retain the original Gan-Xing/CodexBridge repository link. No runtime dependency or database was added.
+
+| Requirement | Implemented modules and checks | Evidence and remaining limits |
+| --- | --- | --- |
+| WINWSL-001 | Desktop catalog, coordinator, binding service/router and JSON stores; `desktop_target.test.ts`, coordinator desktop catalog/entry/exit tests | Ten-item pages, read-only search/preview, invalidation of empty lists, prepared target bindings, host status and original independent-session restoration pass locally. Invalid sharing configuration is retained as a shared-operation error so independent execution and `/exit` remain available. Real WeChat/Windows selection remains pending. |
+| WINWSL-002 | Target resolver, IPC client/transport, relay and Codex provider hooks; IPC routing tests and simulated Windows/WSL provider tests | Exact host/owner routing, inherited settings, Unicode/voice text, returned-turn correlation and refusal to start an independent client pass. Shared failures bypass automatic recovery/resubmission. `/retry`, `/review`, `/compact` and `/goal` cannot invoke independent execution against a shared thread; Codex `/stop` is explicitly unsupported. Claude interrupt behavior is unchanged. Real PC-visible submission remains pending. |
+| WINWSL-003 | `desktop_target.ts`, `desktop_session_catalog.ts`, prepared session binding and target-scoped repositories | Explicit roots, encoded/case-preserved distro IDs, local-pipe restriction, exact rollout IDs, file/index symlink rejection, target-bound cursors and separate desktop-only records pass. Configured filesystem mapping still does not attest that storage has not been deliberately copied. |
+| WINWSL-004 | Relay, `desktop_thread_sync.ts`, `weixin_bridge_runtime.ts` and existing checkpoint/delivery modules | Busy/idle regressions, visible-output filtering, restart acknowledgements, final/notice deduplication, duration, missing timing and exit/switch cancellation pass. WeChat submission and desktop observation now share `desktopThreadBindingKey`, including target identity. |
+| WINWSL-005 | `desktop_ipc_transport.ts`, IPC client and fixed `scripts/codex-desktop-pipe.ps1`; helper/protocol tests | Framing, routing, cancellation, preamble/binary boundaries, large-payload backpressure, sanitized readiness rejection and uncertain-submit handling pass with local fixtures. Real Windows SID API calls, PowerShell compilation/policy, helper watchdog and WSL interoperability remain unverified on this Mac. |
+| WINWSL-006 | Version/config/docs changes and existing Windows/macOS/Linux CI matrix | Node.js 24.19.0 typecheck and focused regression checks pass. Source inventory has no removed baseline files; helper is present; versions parse and match; no new trailing whitespace was found. Windows-only fixture is included but was skipped locally; no CI run or release is claimed. |
+
+Verification used the bundled Node.js **24.19.0**, with test concurrency set to one. Commands below use `node` as shorthand for that executable:
+
+~~~bash
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+
+node scripts/test.mjs --test-concurrency=1 --test-reporter=spec \
+  test/providers/codex/desktop_ipc_client.test.ts \
+  test/providers/codex/desktop_thread_relay.test.ts \
+  test/providers/codex/desktop_target.test.ts \
+  test/providers/codex/desktop_pipe_transport.test.ts \
+  test/providers/codex/plugin.test.ts \
+  test/core/bridge_session_service.test.ts \
+  test/providers/claude/shared_sessions.test.ts \
+  test/runtime/desktop_thread_sync.test.ts
+
+node scripts/test.mjs --test-concurrency=1 --test-reporter=spec \
+  '--test-name-pattern=desktop|/enter|/exit|/threads|shared|versions and IPs|streamed preview|trailing tail|preview stream|repeated commentary|snapshots diverge|failed chunk' \
+  test/core/bridge_coordinator.test.ts \
+  test/runtime/weixin_bridge_runtime.test.ts \
+  test/runtime/desktop_sync_checkpoint.test.ts
+
+node scripts/test.mjs --test-concurrency=1 --test-reporter=spec \
+  test/providers/codex/desktop_target.test.ts \
+  test/providers/codex/desktop_thread_relay.test.ts \
+  test/providers/codex/plugin.test.ts
+~~~
+
+- Typecheck: passed after the final code edits.
+- Eight-file provider/service/observer group: 100 tests, 99 passed, 1 Windows-only helper fixture skipped on macOS.
+- Coordinator and WeChat delivery regression selection: 39 tests, all passed.
+- Follow-up after deferring invalid shared configuration: 57 tests, all passed. This reruns 56 tests from the first group and adds one configuration-failure test; these counts must not be added as independent tests. Together the checks cover 139 distinct passing tests and one Windows-only skip.
+- A new target-aware restart test was run before the checkpoint-key fix: the legacy case passed and the Windows-target case failed with duplicate delivery (`2 !== 1`). Both cases pass after using the same binding key for submission and observation; target changes also suppress the old completion notice. The empty-browser-index regression was not separately run against the pre-fix implementation.
+- Read-only Mac integration probe: the configured catalog returned ten entries with a next page and no inventory-limit warning; the current desktop thread returned a compatible owner. No prompt was submitted, and no WeChat message was sent. This verifies local catalog/owner discovery, not a full conversation round trip or historical desktop-version compatibility.
+- The full repository suite, emitted production build, actual Windows helper, native Windows/WSL2 desktop round trips, cross-account ownership rejection, lock-screen operation and Windows reconnect/restart acceptance were not run. No Windows machine or PowerShell runtime is available in this session. The existing Windows CI job is configured but has not run as part of this work.
+
+The complete scoped diff and its callers were self-reviewed against the approved boundaries. New platform/storage/transport modules remain separate from the coordinator and transport does not import repositories or delivery queues. The only deployment helper added is the fixed pipe bridge; existing service installers are unchanged. No global home/auth rewrite, desktop SQLite access, network listener, GUI fallback or automatic live deployment was introduced.
+
+Existing large-file assessment: coordinator 21,718 → 21,803 lines; Codex provider 1,316 → 1,341; i18n 2,510 → 2,524; WeChat runtime 2,450 → 2,449; app client remains 4,619 with a metadata-only change. These existing boundaries are retained to keep the adaptation and regression scope reviewable; new target/catalog/transport logic lives in separate small files. The existing coordinator and runtime test files also remain over 1,000 lines, with additions placed beside their shared-session regressions. Lockfiles are generated metadata. A broad split of those existing files was not performed or claimed.
+
+The current Mac installation and running WeChat service were not updated or restarted, and no commit, push, tag or publication was performed. Actual Windows/WSL acceptance and compatibility evidence are still required before describing the feature as fully platform-validated or release-ready.

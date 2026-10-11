@@ -45,6 +45,7 @@ test('desktop observer attaches to the unfinished turn and ignores completed his
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = path.join(root, 'rollout-thread-1.jsonl');
   fs.writeFileSync(file,
+    rolloutRecord('session_meta', { id: 'thread-1' }) +
     rolloutRecord('event_msg', { type: 'task_started', turn_id: 'old' })
     + assistantRecord('old', 'old answer', 'final_answer')
     + rolloutRecord('event_msg', { type: 'task_complete', turn_id: 'old', last_agent_message: 'old answer' })
@@ -85,7 +86,7 @@ test('desktop reader derives duration from start/end records and does not invent
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexbridge-timing-'));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = path.join(root, 'rollout-thread-1.jsonl');
-  fs.writeFileSync(file, rolloutRecord('event_msg', { type: 'task_started', turn_id: 'active', started_at: 1791683318 }));
+  fs.writeFileSync(file, rolloutRecord('session_meta', { id: 'thread-1' }) + rolloutRecord('event_msg', { type: 'task_started', turn_id: 'active', started_at: 1791683318 }));
   const reader = new CodexDesktopRolloutReader(root);
   const cursor = await reader.snapshot('thread-1');
   fs.appendFileSync(file, `${JSON.stringify({ timestamp: '2026-10-11T01:48:45.635Z', type: 'event_msg',
@@ -107,7 +108,7 @@ test('desktop reader preserves split UTF-8 records and completed threads are idl
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexbridge-utf8-'));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = path.join(root, 'rollout-thread-1.jsonl');
-  fs.writeFileSync(file, rolloutRecord('event_msg', { type: 'task_complete', turn_id: 'old', last_agent_message: 'done' }));
+  fs.writeFileSync(file, rolloutRecord('session_meta', { id: 'thread-1' }) + rolloutRecord('event_msg', { type: 'task_complete', turn_id: 'old', last_agent_message: 'done' }));
   const reader = new CodexDesktopRolloutReader(root);
   const cursor = await reader.snapshot('thread-1');
   assert.equal(cursor.currentTurnId, null);
@@ -128,7 +129,7 @@ test('desktop reader does not revive a completed task from a different assistant
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const file = path.join(root, 'rollout-thread-1.jsonl');
   fs.writeFileSync(file,
-    rolloutRecord('event_msg', { type: 'task_started', turn_id: 'task-turn' })
+    rolloutRecord('session_meta', { id: 'thread-1' }) + rolloutRecord('event_msg', { type: 'task_started', turn_id: 'task-turn' })
     + assistantRecord('assistant-message-id', '已完成。', 'final_answer')
     + rolloutRecord('event_msg', { type: 'task_complete', turn_id: 'task-turn', last_agent_message: '已完成。' }));
 
@@ -479,7 +480,7 @@ test('CodexDesktopThreadRelay rejects unsupported hosts before invoking commands
     inputText: 'hello',
     input: makeInput(),
     event: makeEvent(),
-  }), /only supported on macOS/);
+  }), /Desktop target is required/);
 });
 
 test('CodexDesktopThreadRelay waits when completed status arrives before assistant text', async () => {
@@ -529,7 +530,7 @@ test('CodexDesktopRolloutReader reads only records appended after the snapshot',
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const threadId = 'thread-1';
   const filePath = path.join(root, `rollout-${threadId}.jsonl`);
-  fs.writeFileSync(filePath, `${JSON.stringify({
+  fs.writeFileSync(filePath, rolloutRecord('session_meta', { id: threadId }) + `${JSON.stringify({
     type: 'event_msg',
     payload: { type: 'task_complete', turn_id: 'old-turn', last_agent_message: 'old reply' },
   })}\n`);

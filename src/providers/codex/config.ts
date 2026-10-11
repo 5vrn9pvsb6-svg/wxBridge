@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getCodexHostPlatform } from './host/index.js';
 import {
   buildOpenAICompatibleExternalModelCatalog,
   buildOpenAICompatibleModelCatalog,
@@ -725,46 +726,15 @@ function resolveExplicitCommandPath(
 }
 
 function normalizeCommandPathForHost(command: string, platform: NodeJS.Platform): string {
-  if (platform !== 'win32' || path.sep !== '/') {
-    return command;
-  }
-  return command.replace(/\\/gu, '/');
+  return getCodexHostPlatform(platform).normalizeCommandPath(command);
 }
 
-function buildExplicitCandidates(
-  filePath: string,
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv,
-): string[] {
-  const candidates = [filePath];
-  if (platform !== 'win32' || path.extname(filePath)) {
-    return candidates;
-  }
-  for (const suffix of resolveWindowsExecutableSuffixes(env)) {
-    candidates.push(`${filePath}${suffix}`);
-  }
-  return unique(candidates);
+function buildExplicitCandidates(filePath: string, platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[] {
+  return getCodexHostPlatform(platform).explicitCommandCandidates(filePath, env);
 }
 
-function resolveCommandSuffixes(
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv,
-  command: string,
-): string[] {
-  if (platform !== 'win32' || path.extname(command)) {
-    return [''];
-  }
-  return resolveWindowsExecutableSuffixes(env);
-}
-
-function resolveWindowsExecutableSuffixes(env: NodeJS.ProcessEnv): string[] {
-  const raw = normalizeString(env.PATHEXT);
-  const preferred = ['.exe', '.cmd', '.bat', '.com'];
-  const allowed = new Set(preferred);
-  const suffixes = (raw?.split(';') ?? ['.EXE', '.CMD', '.BAT', '.COM'])
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => allowed.has(value));
-  return unique([...(preferred), ...(suffixes.length > 0 ? suffixes : preferred)]);
+function resolveCommandSuffixes(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, command: string): string[] {
+  return getCodexHostPlatform(platform).commandSuffixes(command, env);
 }
 
 function splitPathEntries(value: string | undefined): string[] {

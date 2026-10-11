@@ -164,10 +164,32 @@ export class CodexProviderPlugin {
     return this.desktopThreadRelay?.isAvailableForEvent(event) ?? false;
   }
 
+  getDesktopTarget() { return this.desktopThreadRelay?.getTarget?.() ?? null; }
+
+  async listDesktopThreads(params: { providerProfile: ProviderProfile; limit?: number; cursor?: string | null; searchTerm?: string | null }) {
+    this.getDesktopTarget();
+    if (!this.desktopThreadRelay?.catalog) { throw new Error('桌面共享尚未配置，请启用 CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD。'); }
+    return this.desktopThreadRelay.catalog.list(params);
+  }
+
+  async readDesktopThread(params: { providerProfile: ProviderProfile; threadId: string; expectedTargetKey?: string | null }) {
+    const identity = this.getDesktopTarget();
+    if (!identity || (params.expectedTargetKey && params.expectedTargetKey !== identity.key)) {
+      throw new Error('桌面共享目标已变化，请重新发送 /enter。');
+    }
+    return this.desktopThreadRelay!.catalog!.read(params.threadId, true);
+  }
+
+  async prepareDesktopThreadSharing(params: { threadId: string; expectedTargetKey?: string | null }) {
+    if (!this.desktopThreadRelay) { throw new Error('Desktop thread relay is unavailable'); }
+    return this.desktopThreadRelay.prepareSharing(params.threadId, params.expectedTargetKey);
+  }
+
   async observeDesktopThread(params: {
     threadId: string;
     signal: AbortSignal;
     onEvent: (event: ProviderDesktopThreadEvent) => Promise<void> | void;
+    expectedTargetKey?: string | null;
   }): Promise<void> {
     if (!this.desktopThreadRelay) { throw new Error('Desktop thread relay is unavailable'); }
     await this.desktopThreadRelay.observeThread(params);
@@ -368,6 +390,9 @@ export class CodexProviderPlugin {
     onApprovalRequest?: ((request: ProviderApprovalRequest) => Promise<void> | void) | null;
   }): Promise<ProviderTurnResult> {
     const turnInput = buildCodexTurnInput(event, inputText);
+    if (bridgeSession.desktopTarget && !this.desktopThreadRelay?.isEnabledForEvent(event)) {
+      throw new Error('桌面专用会话只能通过共享连接执行，请重新发送 /enter 或 /exit。');
+    }
     if (this.desktopThreadRelay?.isEnabledForEvent(event)) {
       if (!this.desktopThreadRelay.shouldRelay({ event, input: turnInput })) {
         throw new Error('桌面共享会话目前支持纯文本和已转写语音；发送图片、文件、视频或未转写语音前，请先发送 /exit。');

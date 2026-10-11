@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getServicePlatform } from './platform/index.mjs';
+
+const servicePlatform = getServicePlatform();
 
 const scriptPath = fileURLToPath(import.meta.url);
 const defaultRootDir = path.resolve(path.dirname(scriptPath), '..', '..');
@@ -12,7 +15,7 @@ const args = parseArgs(process.argv.slice(2));
 const rootDir = path.resolve(args.rootDir ?? defaultRootDir);
 const homeDir = args.homeDir ? path.resolve(args.homeDir) : null;
 const stateDir = path.resolve(args.stateDir ?? process.env.CODEXBRIDGE_STATE_DIR ?? path.join(os.homedir(), '.codexbridge'));
-const envFile = path.resolve(args.envFile ?? defaultServiceEnvFile());
+const envFile = path.resolve(args.envFile ?? servicePlatform.defaultServiceEnvFile());
 const stdoutLog = args.stdoutLog ? path.resolve(args.stdoutLog) : null;
 const stderrLog = args.stderrLog ? path.resolve(args.stderrLog) : null;
 const restartMs = Math.max(0, Number.parseFloat(args.restartSec ?? process.env.CODEXBRIDGE_SERVICE_RESTART_SEC ?? '2') * 1000);
@@ -29,10 +32,7 @@ if (homeDir) {
   process.env.HOME = homeDir;
   process.env.USERPROFILE = homeDir;
   process.env.CODEX_HOME ||= path.join(homeDir, '.codex');
-  if (process.platform === 'win32') {
-    process.env.APPDATA ||= path.join(homeDir, 'AppData', 'Roaming');
-    process.env.LOCALAPPDATA ||= path.join(homeDir, 'AppData', 'Local');
-  }
+  servicePlatform.configureServiceHome(homeDir);
 }
 process.env.CODEXBRIDGE_STATE_DIR ||= stateDir;
 
@@ -154,13 +154,6 @@ function writeChunk(streamName, chunk) {
 
 function writeLine(streamName, line) {
   writeChunk(streamName, `${new Date().toISOString()} ${line}\n`);
-}
-
-function defaultServiceEnvFile() {
-  if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'codexbridge', 'weixin.service.env');
-  }
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'codexbridge', 'weixin.service.env');
 }
 
 function parseArgs(argv) {

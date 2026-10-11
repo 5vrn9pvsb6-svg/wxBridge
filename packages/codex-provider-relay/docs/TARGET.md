@@ -14,7 +14,7 @@ This target is intentionally narrower than "support more providers" and broader 
 ## Architecture Boundary
 
 ```text
-Host app UI (CodexBridge / CodexNext / future app-server)
+Host app UI (wxBridage / CodexNext / future app-server)
   -> codex-provider-relay package
      -> provider config/profile builder
      -> protocol conversion
@@ -108,7 +108,7 @@ Current package support:
 - The SDK includes fetch-based `web_search` executor factories for Tavily, Brave Search, and Serper; hosts pass keys at runtime.
 - `file_search` can be declared as `relay-emulated` and backed by the same executor registry.
 - The SDK includes a generic `file_search` executor with a pluggable `sources` contract. `roots` remains a local-filesystem shortcut, and the local source does not scan cwd implicitly, skips common dependency/build/binary paths by default, rejects unsafe `path_glob` traversal, and bounds scanned files, file bytes, payload bytes, OpenAI-compatible chunk content, and results.
-- The SDK includes a memory-documents `file_search` source so hosts can expose in-memory summaries, notes, and session records without coupling this package to CodexBridge or CodexNext storage.
+- The SDK includes a memory-documents `file_search` source so hosts can expose in-memory summaries, notes, and session records without coupling this package to wxBridage or CodexNext storage.
 - The SDK includes a SQLite FTS `file_search` source that generates sanitized FTS SQL and runs through a host-injected `database.all(sql, params)` or custom query function. This keeps persistent search support reusable without adding a sqlite driver dependency to the relay package.
 - The SDK includes a generic embedding provider contract, a generic OpenAI-compatible embeddings API provider, a thin OpenRouter/Qwen default wrapper, an in-memory vector `file_search` source, and a local-vector file source with chunking plus pluggable memory and SQLite `CodexProviderRelayLocalVectorIndexStore` implementations. This validates the project-file semantic-search surface before adding Qdrant, LanceDB, pgvector, or remote-doc backends.
 - Non-streaming Chat Completions loops are executed inside the relay: upstream tool call -> relay executor -> tool output message -> follow-up upstream call -> Codex-compatible Responses result.
@@ -122,8 +122,8 @@ Current package support:
 3. Wrap local Responses adapter lifecycle through this package without importing host-app adapter types.
 4. Add Codex++ compatible auth mode using `requires_openai_auth = true`.
 5. Add contract tests for `function_call`, `custom_tool_call`, `namespace`, `apply_patch`, `web_search`, and streaming tool deltas.
-6. Switch CodexBridge provider code to consume this package through host-side adapter options.
-7. Allow CodexNext to consume the same package without importing CodexBridge internals.
+6. Switch wxBridage provider code to consume this package through host-side adapter options.
+7. Allow CodexNext to consume the same package without importing wxBridage internals.
 8. Expose high-level official/mixed/pure API profile builders so app-servers can avoid invalid auth/protocol combinations.
 9. Keep `codex-gateway` only as a temporary compatibility package or historical reference; new consumers should import only `@codexbridge/codex-provider-relay`.
 10. Add remaining hosted-tool executors as separate adapters, keeping each capability explicitly declared and independently testable. Local filesystem `file_search`, memory-documents `file_search`, SQLite FTS `file_search`, in-memory vector `file_search`, local-vector `file_search`, SQLite vector persistence, and the generic embedding/source/store contracts are implemented first; Qdrant/LanceDB/pgvector sources, code interpreter, image generation, and computer-use adapters remain future work.

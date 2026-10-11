@@ -8,7 +8,7 @@ The fixed target is unchanged:
 
 > Let non-OpenAI models participate in the Codex native tool-call loop.
 
-The conversion work now belongs in `packages/codex-provider-relay`. The package exposes the reusable integration surface, Codex config/profile helpers, low-level protocol conversion, capability policy, and the local Responses adapter server as a single SDK surface for CodexBridge, CodexNext, and future app-server integrations.
+The conversion work now belongs in `packages/codex-provider-relay`. The package exposes the reusable integration surface, Codex config/profile helpers, low-level protocol conversion, capability policy, and the local Responses adapter server as a single SDK surface for wxBridage, CodexNext, and future app-server integrations.
 
 ## Current Status Snapshot
 
@@ -31,7 +31,7 @@ Last updated: 2026-06-07
 - [x] Gated live smoke path: `test:live-openai-compatible` now includes a real upstream custom-tool loop smoke when provider profiles and API keys are configured.
 - [x] Codex++ request-history semantics: reasoning input items, assistant/tool-call merging, orphan tool-output fallback, `latest_reminder`, late system/developer collapse, empty assistant normalization, and no-tool control filtering are covered by translated protocol tests.
 - [x] Real upstream live smoke: DeepSeek, Qwen, and OpenRouter have passed normal response plus custom-tool continuation through the relay using local gitignored provider credentials; MiniMax remains skipped until a `MINIMAX_API_KEY` profile is configured.
-- [x] High-level relay profile surface: `official`, `mixed`, and `pure-api` profile builders now encode the intended auth/protocol/local-adapter combinations for host apps such as CodexBridge, CodexNext, and future app-server integrations.
+- [x] High-level relay profile surface: `official`, `mixed`, and `pure-api` profile builders now encode the intended auth/protocol/local-adapter combinations for host apps such as wxBridage, CodexNext, and future app-server integrations.
 - [x] Hosted tool declaration contract: `provider-native` and `relay-emulated` strategies now require explicit hosted tool declarations instead of silently assuming upstream OpenAI hosted-tool parity.
 - [x] Codex++ CCS request edge behavior: unsupported/default reasoning models no longer receive `reasoning_effort`, tool controls are only forwarded when Chat tools survive, o-series `max_output_tokens` maps to `max_completion_tokens`, explicit `max_tokens` / `max_completion_tokens` aliases are preserved, and array instructions collapse into system text.
 - [x] Codex++ model-name reasoning dialect fallback: DeepSeek, OpenRouter, Qwen/SiliconFlow, Kimi/GLM/Moonshot, MiniMax, StepFun, gpt-5+, and o-series behavior is mirrored when no host capability override is provided.
@@ -42,8 +42,8 @@ Last updated: 2026-06-07
 - [x] Reusable `web_search` executor factory: Tavily, Brave Search, and Serper adapters normalize results into the relay-hosted tool output contract without storing provider secrets in the SDK.
 - [x] Opt-in hosted-tool SSE observability: stream clients can enable `emitHostedToolSseEvents` to receive `hosted_tool.started`, `hosted_tool.delta`, `hosted_tool.completed`, and `hosted_tool.failed` lifecycle events without exposing internal relay tool names by default.
 - [x] Relay-emulated `file_search` protocol loop: `file_search` declarations can be converted into relay-owned Chat function tools, executed through the package executor registry, and streamed through the same internal tool-call continuation path as `web_search`.
-- [x] Reusable local filesystem `file_search` executor: explicit roots, default dependency/build/binary ignores, symlink opt-in, bounded scan limits, bounded file reads, OpenAI-compatible `content[]` chunks, and optional chunk content are implemented without depending on CodexBridge host state.
-- [x] Generic `file_search` source contract: the executor now accepts pluggable `sources`, preserves `roots` as a local-fs shortcut, aggregates cross-source results, applies a total payload bound, and keeps source implementations independent from CodexBridge host state.
+- [x] Reusable local filesystem `file_search` executor: explicit roots, default dependency/build/binary ignores, symlink opt-in, bounded scan limits, bounded file reads, OpenAI-compatible `content[]` chunks, and optional chunk content are implemented without depending on wxBridage host state.
+- [x] Generic `file_search` source contract: the executor now accepts pluggable `sources`, preserves `roots` as a local-fs shortcut, aggregates cross-source results, applies a total payload bound, and keeps source implementations independent from wxBridage host state.
 - [x] Reusable memory-documents `file_search` source: hosts can pass explicit in-memory documents with `id`, `title`, `uri`, `path`, and `content`, and the source reuses the same title/content scoring, OpenAI-compatible chunk generation, `path_glob`, and include-content behavior as the local filesystem source.
 - [x] Reusable SQLite FTS `file_search` source: hosts can pass an injected `database.all(sql, params)` or custom `query()` function, while the relay package owns safe identifier validation, FTS query construction, path filtering, row normalization, OpenAI-compatible chunk generation, and include-content behavior without depending on a sqlite driver.
 - [x] Embedding provider contract and semantic sources: `CodexProviderRelayEmbeddingProvider`, `createCodexProviderRelayEmbeddingsApiProvider()`, the thin `createCodexProviderRelayOpenRouterEmbeddingProvider()` convenience wrapper, `createCodexProviderRelayInMemoryVectorFileSearchSource()`, `createCodexProviderRelayLocalVectorFileSearchSource()`, `createCodexProviderRelayMemoryLocalVectorIndexStore()`, and `createCodexProviderRelaySqliteLocalVectorIndexStore()` are implemented. The local-vector source reuses explicit-root local-fs safety, chunks files, caches unchanged document embeddings by mtime/size/model, and performs hybrid vector/lexical scoring. The SQLite store persists documents/chunks/embedding vectors through host-injected `database.all/run` without adding a sqlite driver dependency. The core provider accepts a host-supplied embeddings endpoint/model/headers/API key; OpenRouter Qwen is only the default smoke-test configuration. Tests use deterministic fake embeddings and an optional env-gated real embeddings API integration test.
@@ -521,7 +521,7 @@ Tests:
 - Existing `packages/codex-provider-relay/test/codex_config.test.ts`.
 - Added coverage for Chat Completions upstream routing through the local Responses proxy.
 - Added coverage for default proxy port and invalid port validation.
-- Existing `test/providers/openai_compatible/plugin.test.ts` confirms the CodexBridge host adapter still points Codex at the local Responses adapter.
+- Existing `test/providers/openai_compatible/plugin.test.ts` confirms the wxBridage host adapter still points Codex at the local Responses adapter.
 - Added `packages/codex-provider-relay/test/runtime.test.ts` for runtime start/stop, idempotent start, auth mode config, and input validation.
 
 Done when:

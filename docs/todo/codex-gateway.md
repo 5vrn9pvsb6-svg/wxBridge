@@ -88,7 +88,7 @@ Latest progress:
 - [x] Package public-surface tests now lock `@codexbridge/codex-gateway` to an internal-only release channel (`private: true` + minimal exports/files) until the API boundary and live-provider matrix are stable
 - [x] Package `tsconfig` now emits into `packages/codex-gateway/dist`, and public-surface tests lock that build layout to the `package.json` exports/files contract
 - [x] OpenRouter live smoke is no longer treated as a current phase blocker; it is deferred until credentials are available again
-- [x] `codex-gateway` now ships an internal-only standalone server launcher that can boot the local `/v1/responses` adapter directly from env, without pulling in CodexBridge runtime code
+- [x] `codex-gateway` now ships an internal-only standalone server launcher that can boot the local `/v1/responses` adapter directly from env, without pulling in wxBridage runtime code
 - [x] The standalone launcher now supports dotenv-style env-file loading (`CODEX_GATEWAY_ENV_FILE` / `--env-file`) so it can run without manual shell exports
 - [x] `codex-proxy`-inspired regression tests now lock `previous_response_id` preservation and Codex-style stream event ordering at the package server boundary
 - [x] LiteLLM-inspired upstream error normalization now preserves `retry_after_ms` plus selected request/rate-limit headers at the package server boundary
@@ -108,7 +108,7 @@ Latest progress:
 
 ## Packaging Direction
 
-The package should stay as an internal package inside the CodexBridge
+The package should stay as an internal package inside the wxBridage
 repository first:
 
 ```text
@@ -117,10 +117,10 @@ packages/codex-gateway/
 
 Rules:
 
-- `CodexBridge -> @codexbridge/codex-gateway`
-- `@codexbridge/codex-gateway -X-> CodexBridge core/platform/runtime/store/i18n`
+- `wxBridage -> @codexbridge/codex-gateway`
+- `@codexbridge/codex-gateway -X-> wxBridage core/platform/runtime/store/i18n`
 - No workspace/monorepo conversion is required yet
-- Legacy CodexBridge provider paths may remain re-export shims during migration
+- Legacy wxBridage provider paths may remain re-export shims during migration
 - Phase 5 decision on 2026-05-06: keep the package internal-only for now; do not widen npm/public surface until live-provider coverage and integration contracts are stable
 - Keep package-local build output aligned with `package.json` exports/files so the internal package can still be consumed exactly as declared
 - Standalone server launch is allowed as an internal validation/tooling aid, but it is still not positioned as a public gateway product
@@ -150,7 +150,7 @@ The package must continue **not** to own:
 ### Phase 0
 
 - [x] Freeze current behavior with existing adapter tests before moving files
-- [x] Record the public surface that CodexBridge depends on: request conversion, response conversion, stream conversion, compact fallback, provider presets, capability merge, WebSocket repair primitives, and local adapter server
+- [x] Record the public surface that wxBridage depends on: request conversion, response conversion, stream conversion, compact fallback, provider presets, capability merge, WebSocket repair primitives, and local adapter server
 
 Frozen migration surface:
 
@@ -178,8 +178,8 @@ Frozen migration surface:
 - [x] Moved `src/providers/shared/thinking_policy.ts` implementation to `packages/codex-gateway/src/capabilities/thinking_policy.ts`
 - [x] Moved `src/providers/openai_compatible/cliproxy_model_catalog.ts` implementation to `packages/codex-gateway/src/capabilities/cliproxy_model_catalog.ts`
 - [x] Moved `src/providers/openai_compatible/capability_presets.ts` implementation to `packages/codex-gateway/src/capabilities/capability_presets.ts`
-- [x] Replaced the old CodexBridge paths with re-export shims so existing imports continue to work
-- [x] Removed the package-side dependency on CodexBridge `ProviderModelInfo` by introducing a package-local structural `OpenAICompatibleModelInfo`
+- [x] Replaced the old wxBridage paths with re-export shims so existing imports continue to work
+- [x] Removed the package-side dependency on wxBridage `ProviderModelInfo` by introducing a package-local structural `OpenAICompatibleModelInfo`
 - [x] Added package-level capability tests for presets, external catalog import, reasoning effort resolution, and model capability overrides
 - [x] Verification run on 2026-05-06: `codex-gateway:typecheck`, `codex-gateway:test`, `codex-gateway:check-boundary`, `codex-gateway:build`, OpenAI-compatible adapter/config/plugin tests, root `typecheck`, root `build`, and `git diff --check`
 
@@ -212,11 +212,11 @@ Frozen migration surface:
 - [x] Covered local compact fallback output
 - [x] Covered multimodal downgrade for unsupported image and file input
 - [x] Full verification run on 2026-05-06: `codex-gateway:check-boundary`, `codex-gateway:typecheck`, `codex-gateway:test`, `codex-gateway:build`, OpenAI-compatible adapter/server/config/plugin/WebSocket repair tests, root `typecheck`, root `build`, and `git diff --check`
-- [x] Refactored live-provider smoke tests to load the real CodexBridge provider profiles via `loadCodexProfilesFromEnv()` before starting the local Responses adapter server
+- [x] Refactored live-provider smoke tests to load the real wxBridage provider profiles via `loadCodexProfilesFromEnv()` before starting the local Responses adapter server
 - [x] Added `pnpm run test:live-openai-compatible` as the explicit gated live smoke entrypoint
 - [x] Profile-based live smoke harness verification run on 2026-05-06: default test path skips safely; gated path also skips when current shell has no DeepSeek, MiniMax, Qwen/DashScope, or OpenRouter profile env
 - [x] Added `CODEXBRIDGE_TEST_ENV_FILE` support to the test runner so gated live tests can load a service env file without printing secrets
-- [x] Live profile smoke run on 2026-05-06 with `/home/ubuntu/.config/codexbridge/weixin.service.env`: DeepSeek, MiniMax, and Qwen passed through real CodexBridge profiles
+- [x] Live profile smoke run on 2026-05-06 with `/home/ubuntu/.config/codexbridge/weixin.service.env`: DeepSeek, MiniMax, and Qwen passed through real wxBridage profiles
 - [x] OpenRouter live smoke is explicitly deferred because credentials will not be provided in the near term; Phase 4 now closes with DeepSeek, MiniMax, and Qwen verified
 
 ### Phase 5: Publish decision
@@ -224,7 +224,7 @@ Frozen migration surface:
 - [x] Decide whether to publish as `@codexbridge/codex-gateway`; keep it private/internal until the API boundary is stable
 - [x] Keep package metadata and package-local build output aligned so `exports` and `files` point at real artifacts
 - [x] Add an internal-only standalone launcher for the local `/v1/responses` adapter server without widening the package into a public gateway product
-- [x] Let the internal standalone launcher load dotenv-style env files without depending on CodexBridge runtime env loaders
+- [x] Let the internal standalone launcher load dotenv-style env files without depending on wxBridage runtime env loaders
 - [x] Keep publication/promotion of the standalone launcher explicitly out of the active package backlog until product direction changes
 
 ## Reference Usage
@@ -237,12 +237,12 @@ Frozen migration surface:
 ## Completion Criteria
 
 - [x] Codex Gateway package extraction, reference-driven hardening, and internal-only standalone tooling are no longer blocked on package-local protocol work
-- [x] The gateway package can be tested without starting WeChat or CodexBridge runtime
-- [x] The gateway package has no imports from CodexBridge core, platform runtimes, stores, slash commands, or i18n
-- [x] Legacy CodexBridge import paths still work through re-export shims during the migration window
+- [x] The gateway package can be tested without starting WeChat or wxBridage runtime
+- [x] The gateway package has no imports from wxBridage core, platform runtimes, stores, slash commands, or i18n
+- [x] Legacy wxBridage import paths still work through re-export shims during the migration window
 - [x] Adding a new OpenAI-compatible provider normally requires config/capability data, not a new provider plugin class
 - [x] Unsupported provider features produce clear downgrade/error behavior instead of silent stalls or malformed upstream payloads
-- [x] Existing CodexBridge OpenAI-compatible tests pass through the new package boundary
+- [x] Existing wxBridage OpenAI-compatible tests pass through the new package boundary
 
 ## Optional Package Enhancement Backlog
 
@@ -285,12 +285,12 @@ not bridge-side WeChat product work.
   The package now exposes optional request/response/retry/stream trace hooks,
   including machine-readable `request.adjusted` events for downgrade/filter
   decisions. The internal standalone launcher can emit trace events directly
-  to stderr as NDJSON without relying on CodexBridge runtime logging or
+  to stderr as NDJSON without relying on wxBridage runtime logging or
   WeChat transport reproduction.
 
 ## Deferred / External Follow-up
 
 - [ ] If publication ever becomes a goal later, decide whether to promote the standalone launcher into a supported standalone HTTP proxy binary
   This is a future product-direction decision, not an active protocol-package blocker.
-- [x] CodexBridge can switch OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter profiles without changing WeChat UX
+- [x] wxBridage can switch OpenAI-native, DeepSeek, MiniMax, Qwen, and OpenRouter profiles without changing WeChat UX
   Bridge/runtime regression coverage now proves stable WeChat-facing `/provider`, `/status`, and `/models` UX across those profile ids. Deferred OpenRouter live smoke remains tracked separately as upstream-provider validation, not as a remaining bridge UX gap.

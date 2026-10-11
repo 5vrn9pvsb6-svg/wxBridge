@@ -6,23 +6,23 @@ Codex Native API is the local API facade over the already logged-in Codex
 app-server runtime.
 
 Its job is to convert **local Codex subscription/login state** into a
-localhost-callable API without changing the main CodexBridge WeChat flow.
+localhost-callable API without changing the main wxBridage WeChat flow.
 
 This is not a replacement for the current bridge path.
 It is an **additional isolated execution surface**.
 
 Immutable workstream target:
 
-> Keep the primary CodexBridge chat flow on the current Codex app-server path,
+> Keep the primary wxBridage chat flow on the current Codex app-server path,
 > while exposing a localhost Responses-first API over logged-in Codex for
 > isolated side tasks and optional local consumers.
 
 Longer-term product direction:
 
-> The first implementation may live inside CodexBridge runtime, but the
+> The first implementation may live inside wxBridage runtime, but the
 > capability should eventually be extractable into a reusable package that can
 > expose logged-in local Codex as a standalone localhost API without requiring
-> the full CodexBridge bridge stack.
+> the full wxBridage bridge stack.
 
 ## Product Meaning
 
@@ -33,7 +33,7 @@ This workstream solves two related product problems:
    - expose it as a local API surface
 2. `main thread cleanliness`
    - run lightweight side tasks off-thread
-   - avoid polluting the active CodexBridge conversation history
+   - avoid polluting the active wxBridage conversation history
 
 This is best described as:
 
@@ -46,7 +46,7 @@ It should not be described as "minting a real OpenAI API key".
 ## Current Closure Policy
 
 The current implementation already contains some provider-selectable localhost
-API seams because it reused the existing CodexBridge provider-profile and
+API seams because it reused the existing wxBridage provider-profile and
 provider-plugin infrastructure.
 
 That generalized shape is not the current closure target.
@@ -126,7 +126,7 @@ The recommended evolution is:
 
 ### Stage A: Internal runtime/module
 
-First, implement the capability inside CodexBridge near the existing native
+First, implement the capability inside wxBridage near the existing native
 Codex runtime integration.
 
 Reason:
@@ -172,7 +172,7 @@ packages/codex-native-api
 
 Reason:
 
-- CodexBridge can keep consuming the package
+- wxBridage can keep consuming the package
 - the boundary becomes testable and reusable
 - the feature no longer has to remain buried inside bridge-specific files
 
@@ -214,7 +214,7 @@ Only revisit that split if:
 If the API surface proves stable and other consumers exist, the package should
 be publishable independently so users can:
 
-- install the native-api package without installing full CodexBridge bridge UX
+- install the native-api package without installing full wxBridage bridge UX
 - expose logged-in local Codex as localhost API for their own tools
 - reuse the subscription-to-API capability outside WeChat/Telegram bridging
 
@@ -224,7 +224,7 @@ This is a direction, not a Phase 1 requirement.
 
 Use this as the single stable sentence for the workstream goal:
 
-> Codex Native API 的目标是把已登录本地 Codex app-server 的订阅能力封装成 localhost 可调用的标准 API，并优先承接 CodexBridge 的隔离型副任务，同时保持主聊天链路不变。
+> Codex Native API 的目标是把已登录本地 Codex app-server 的订阅能力封装成 localhost 可调用的标准 API，并优先承接 wxBridage 的隔离型副任务，同时保持主聊天链路不变。
 
 ## Core Execution Model
 
@@ -232,7 +232,7 @@ The system should have three distinct execution lanes:
 
 ### Lane A: Main conversation lane
 
-- current CodexBridge flow
+- current wxBridage flow
 - direct Codex app-server integration
 - full thread continuity
 - unchanged WeChat-facing behavior
@@ -334,7 +334,7 @@ First phases should **not** try to solve all of these at once:
 
 - no public internet-exposed gateway by default
 - no billing or payment platform
-- no replacement of CodexBridge main chat orchestration
+- no replacement of wxBridage main chat orchestration
 - no mandatory Chat Completions surface in Phase 1
 - no bridge-side preview/final delivery changes
 - no attempt to emulate a real cloud OpenAI API key
@@ -405,7 +405,7 @@ Upstream:
 ## Reference Extraction Blueprint
 
 The native-api workstream should not "vendor the whole project" from either
-reference. It should selectively absorb the parts that match the CodexBridge
+reference. It should selectively absorb the parts that match the wxBridage
 goal.
 
 ### What to absorb from Sub2API
@@ -460,7 +460,7 @@ Build:
 
 Outcome:
 
-- CodexBridge gets one stable native execution substrate before any localhost
+- wxBridage gets one stable native execution substrate before any localhost
   API is exposed
 
 ### 2. Wrap the runtime with a localhost Responses API shell
@@ -523,7 +523,7 @@ Outcome:
 Borrow mainly from:
 
 - CLIProxyAPI routing/fallback policy
-- existing CodexBridge helper-thread execution pattern
+- existing wxBridage helper-thread execution pattern
 
 Build:
 
@@ -565,7 +565,7 @@ Outcome:
 The best first implementation is **not** a separate npm-style package like
 `codex-gateway`.
 
-Phase 1 should start as an **internal CodexBridge runtime/module** because it
+Phase 1 should start as an **internal wxBridage runtime/module** because it
 must stay close to:
 
 - the logged-in Codex app-server process
@@ -585,7 +585,7 @@ WeChat / Telegram / internal helpers / local tools
 Recommended code-boundary direction:
 
 ```text
-CodexBridge runtime
+wxBridage runtime
   -> native-api module
   -> src/providers/codex/app_client.ts
   -> codex app-server
@@ -772,7 +772,7 @@ clients while still reusing Codex-native conversation continuity underneath.
 
 ## Internal Routing Policy
 
-This workstream exists partly so CodexBridge itself can use the local API for
+This workstream exists partly so wxBridage itself can use the local API for
 side work without dirtying the main thread.
 
 Recommended task classes:

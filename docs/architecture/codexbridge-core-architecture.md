@@ -1,22 +1,25 @@
-# CodexBridge Core Architecture
+# wxBridage Core Architecture
 
 ## Goal
 
-`CodexBridge` is a `platform plugins + Codex engine adapter + bridge core` project.
+`wxBridage` is a `platform plugins + provider/session adapters + bridge core` project.
 
 Immutable product target:
 
-> CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流；`@codexbridge/codex-gateway` 的目标是让 Codex 稳定接入多模型来源。
+> wxBridage 的核心目标是让微信与电脑共享已有的 Codex 或 Claude Code 会话，保留同一上下文、工作区和权限，并同步可见输出、结束状态与耗时。用户显式进入共享，退出后恢复自己的微信独立会话。
+
+Shared execution stays with the selected session's existing owner: the Codex desktop app through local IPC, or the interactive Claude Code CLI through its MCP Channel. See the [Codex Windows/WSL2 sharing design and verification record](../design/windows-wsl-sharing-architecture.md) and [Claude Code shared-session design](../design/claude-shared-sessions.md) for the implemented boundaries and acceptance limits. The Codex-specific schemas and package sections below describe that provider's execution path, rather than limiting the product to Codex.
 
 This target should not change during implementation. The route, package layout,
 and migration order may change as the code evolves, but changes should continue
 to serve this target.
 
-The first shipped path is:
+The primary product path is:
 
 - platform: `WeChat`
-- engine: `Codex`
-- default Codex provider profile: `openai-default`
+- shared owners: `Codex desktop` and `Claude Code interactive CLI`
+- sharing controls: `/enter`, `/enter claude`, `/enter codex`, `/status`, `/exit`
+- independent default provider profile: `openai-default`
 
 The architecture must already be ready for:
 
@@ -34,10 +37,11 @@ The architecture must already be ready for:
 ## Core Design Rules
 
 1. Platform is not the source of truth for conversation state.
-2. The Codex engine adapter is not allowed to leak platform-specific structures into the core.
-3. A real Codex session is identified by:
+2. Provider/session adapters are not allowed to leak platform-specific structures into the core.
+3. A provider session is identified by:
    - `provider_profile_id`
-   - `codex_thread_id`
+   - the provider's thread/session ID, stored in the existing `codex_thread_id` field
+   - the configured desktop target identity for Codex desktop-only bindings
 4. Multiple platform scopes may point to the same bridge session.
 5. Provider profile switching must create a new bridge session instead of reusing a previous provider thread.
 
@@ -45,12 +49,13 @@ The architecture must already be ready for:
 
 For the first implementation, the core unit is `bridge_session`.
 
-A `bridge_session` represents one Codex-backed thread under one provider profile:
+A `bridge_session` represents one provider-owned session under one provider profile, including Codex threads and shared Claude Code sessions:
 
 - `provider_profile_id`
 - `codex_thread_id`
 - `cwd`
 - `title`
+- optional `desktopTarget` identity for Codex desktop-only records
 
 Platform scopes do not own thread state. They only bind to a bridge session.
 
@@ -247,7 +252,7 @@ Important rule:
 
 ## Codex Native API Server
 
-CodexBridge should also be ready to expose the **logged-in local Codex
+wxBridage should also be ready to expose the **logged-in local Codex
 app-server** as a localhost-callable API surface.
 
 This is a separate direction from `@codexbridge/codex-gateway`:
@@ -284,7 +289,7 @@ Recommended first constraints:
 - bind `127.0.0.1` by default
 - reuse the already logged-in Codex runtime instead of requiring an OpenAI API
   key
-- implement the first version as an internal CodexBridge runtime/module close
+- implement the first version as an internal wxBridage runtime/module close
   to the current native Codex integration, not as a separate package
 - preserve a clean extraction path so the capability can later become a
   reusable package and, if justified, a standalone npm package outside the full
@@ -311,13 +316,13 @@ This workstream should be tracked separately under:
 
 The Codex Gateway protocol layer should stay as an internal TypeScript package
 first, then become a publishable npm package only after its API boundary is
-stable. The package target is broader than CodexBridge: it should help Codex run
+stable. The package target is broader than wxBridage: it should help Codex run
 on OpenAI-compatible model providers.
 
 Current Phase 5 decision:
 
 - keep `@codexbridge/codex-gateway` internal-only (`private: true`) for now
-- keep the package export surface minimal while live-provider coverage and CodexBridge integration contracts are still settling
+- keep the package export surface minimal while live-provider coverage and wxBridage integration contracts are still settling
 - keep package-local build output under `packages/codex-gateway/dist` so `package.json` exports and files describe real artifacts
 - allow an internal-only standalone launcher for the local `/v1/responses` adapter server, as long as it stays inside the package boundary and does not pull bridge runtime concerns back in
 - let server-side upstream error normalization preserve actionable gateway metadata such as `retry_after_ms`, request IDs, and selected rate-limit headers when available
@@ -340,7 +345,7 @@ Target dependency direction:
 
 ```text
 WeChat / Telegram
-  -> CodexBridge platform runtime
+  -> wxBridage platform runtime
   -> Bridge core sessions and provider profiles
   -> OpenAICompatibleProviderPlugin
   -> @codexbridge/codex-gateway
@@ -409,7 +414,7 @@ The package owns only reusable protocol behavior:
 - local adapter server routes for `/v1/responses`, `/v1/responses/compact`, and `/v1/models`
 
 Phase 0 freezes the current migration surface before files move. This is the
-surface that current CodexBridge code and tests depend on, not the final npm
+surface that current wxBridage code and tests depend on, not the final npm
 package API:
 
 ```ts
@@ -489,8 +494,8 @@ Phase 4 freezes package-boundary behavior with a fixture-based contract suite:
 - local compact fallback behavior
 - capability-driven downgrades for unsupported tools, images, and files
 
-The legacy CodexBridge paths are now re-export shims for those files. The
-CodexBridge provider integration wrapper remains at
+The legacy wxBridage paths are now re-export shims for those files. The
+wxBridage provider integration wrapper remains at
 `src/providers/openai_compatible/plugin.ts` and is responsible for provider
 profile/env wiring only.
 
@@ -503,7 +508,7 @@ Preset-backed compatible provider exposure should stay registration-driven:
 - custom compatible provider definitions may also merge `capabilityOverrides`, so many provider-specific quirks can stay in configuration instead of forcing new bridge-side branches
 - custom compatible provider definitions may also embed `modelCatalog`, so provider-specific model metadata can stay in configuration without requiring a separate file
 
-CodexBridge keeps all bridge/runtime behavior:
+wxBridage keeps all bridge/runtime behavior:
 
 - WeChat and Telegram transports
 - SendGate, message chunking, typing, and platform rate-limit behavior
@@ -537,17 +542,17 @@ Extraction dependency rules:
 
 - package code must not import from `src/core`, `src/platforms`, `src/runtime`, `src/store`, or `src/i18n`
 - package code may depend on Node built-ins and local package files only
-- CodexBridge provider code may import package APIs, but package code must never import CodexBridge provider code
+- wxBridage provider code may import package APIs, but package code must never import wxBridage provider code
 - boundary automation should also keep legacy bridge-side shim files as pure re-exports so protocol logic does not drift back out of `packages/codex-gateway`
-- live-provider smoke tests stay in CodexBridge until the adapter package has a stable fixture-based contract suite
-- live-provider smoke tests must load real CodexBridge provider profiles through `loadCodexProfilesFromEnv()` before starting the local adapter server; hand-written provider specs are not enough to validate bridge profile wiring
+- live-provider smoke tests stay in wxBridage until the adapter package has a stable fixture-based contract suite
+- live-provider smoke tests must load real wxBridage provider profiles through `loadCodexProfilesFromEnv()` before starting the local adapter server; hand-written provider specs are not enough to validate bridge profile wiring
 - live-provider smoke tests may use `CODEXBRIDGE_TEST_ENV_FILE` to load a service env file, but test output must never print API key values
 - the package should not expose account, auth-pool, proxy-rotation, or OAuth concepts until those become a separate deployment package
 
 Deferred architecture:
 
 - a full IR layer is useful later, but the first extraction should remain Responses-to-Chat because that is the active production path
-- a standalone HTTP proxy binary is useful later, but it should wrap the package after CodexBridge integration is stable
+- a standalone HTTP proxy binary is useful later, but it should wrap the package after wxBridage integration is stable
 - Anthropic/Gemini native endpoints should wait until the package boundary is proven with OpenAI-compatible Chat providers
 
 ## Current Implementation Strategy

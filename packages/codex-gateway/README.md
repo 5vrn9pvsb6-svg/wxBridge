@@ -17,7 +17,7 @@ Current release policy:
 - keep this package `private: true`
 - keep the export surface minimal while the API boundary stabilizes
 - keep package-local build output in `packages/codex-gateway/dist` so `package.json` export paths describe real artifacts
-- only revisit npm publication after live-provider coverage and CodexBridge integration contracts are stable
+- only revisit npm publication after live-provider coverage and wxBridage integration contracts are stable
 
 ## Internal standalone server
 
@@ -63,7 +63,7 @@ node packages/codex-gateway/dist/cli.js
 ```
 
 This emits structured trace events to `stderr` as NDJSON without depending on
-CodexBridge runtime logging.
+wxBridage runtime logging.
 
 Supported env knobs:
 
@@ -115,7 +115,7 @@ routing, compact support, structured output, and output-token limits.
 The adapter server also supports an optional package-local trace sink so
 request translation, response translation, retry behavior, and translated
 stream events can be debugged without reproducing issues through WeChat or
-CodexBridge runtime logs. Trace output also includes machine-readable
+wxBridage runtime logs. Trace output also includes machine-readable
 `request.adjusted` events when compatibility rules filter fields, drop
 unsupported tools, cap output-token requests, or downgrade unsupported
 image/file input.
@@ -133,7 +133,7 @@ and reasoning/thinking policy into this package. Phase 1C moved the pure
 Responses/Chat converter and SSE translator implementation into this package.
 Phase 3 moved the local Responses adapter server into this package, with
 Responses-first root routes and `/v1/*` compatibility aliases. The old
-CodexBridge paths still exist as re-export shims during migration:
+wxBridage paths still exist as re-export shims during migration:
 
 - `src/providers/openai_compatible/capability_presets.ts`
 - `src/providers/openai_compatible/cliproxy_model_catalog.ts`
@@ -141,9 +141,9 @@ CodexBridge paths still exist as re-export shims during migration:
 - `src/providers/openai_compatible/responses_adapter_server.ts`
 - `src/providers/shared/thinking_policy.ts`
 
-CodexBridge now keeps only the OpenAI-compatible provider integration wrapper in
+wxBridage now keeps only the OpenAI-compatible provider integration wrapper in
 `src/providers/openai_compatible/plugin.ts`; package code still must not import
-from CodexBridge core/platform/runtime/store/i18n.
+from wxBridage core/platform/runtime/store/i18n.
 
 ## Validation
 
@@ -157,7 +157,7 @@ pnpm run codex-gateway:build
 ```
 
 Live OpenAI-compatible provider smoke tests are gated and must run through the
-CodexBridge provider profile loader:
+wxBridage provider profile loader:
 
 ```bash
 pnpm run test:live-openai-compatible

@@ -1,29 +1,64 @@
-# CodexBridge
+# wxBridage
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-CodexBridge 是一个以 Codex 为核心的聊天平台网关。它把微信等聊天平台连接到同一个 Codex 执行引擎，并允许在 Codex 内按需切换后端 Provider 配置。
+在微信里，继续你电脑上的 Codex 和 Claude Code 会话。
 
-原始仓库：[Gan-Xing/CodexBridge](https://github.com/Gan-Xing/CodexBridge)。当前版本基于该项目进行修改和扩展。
+wxBridage 的核心功能是桌面会话共享：把微信接入电脑上已有的会话，沿用同一个对话、上下文和工作区。在微信发送的消息会进入所选会话；在电脑启动的任务，其可见输出也会同步到微信，方便离开电脑后继续跟进。
 
-## 当前方向
+原始仓库：[Gan-Xing/CodexBridge](https://github.com/Gan-Xing/CodexBridge)。wxBridage 基于该项目修改和扩展，增加了 Codex 与 Claude Code 会话共享能力。
 
-- 首个交付目标：`微信 + Codex`
-- 暂停包级实验
-- `packages/codex-gateway` 暂停开发
-- `packages/mission-control` 暂停开发
-- `packages/codex-native-api` 仅作为未来可能继续推进的方向保留，目前同样暂停
-- 核心原则：聊天平台只是适配器，Codex 始终是执行引擎，Codex 线程状态始终是事实来源
+## 核心功能
+
+- **共享已有会话**：在微信继续 Codex 桌面会话或 Claude Code 会话，保留原有历史和工作区。
+- **先选择，再进入**：每页列出 10 个会话，明确选择后才进入共享；仅查看列表不会改变当前绑定。
+- **手机跟进电脑任务**：同步可见进度和最终结果，每轮结束后单独通知完成状态与耗时，也支持跟进电脑端发起的任务。
+- **退出后恢复自己的会话**：`/exit` 返回共享前的微信独立会话，原电脑会话及其中已提交的任务继续保留。
+- **去重与重启恢复**：记录已确认的共享输出，服务重启或重连后跳过已确认发送的内容。
+
+## 支持的共享会话
+
+| 引擎 | 微信共享的对象 | 连接方式 |
+| --- | --- | --- |
+| Codex | Codex 桌面应用持有的已有会话 | 本地桌面 IPC，桌面端保持运行；Windows/WSL2 适配代码已实现，实机验收仍待完成。 |
+| Claude（Claude Code） | 电脑上已有的交互式 Claude Code CLI 会话 | 在所选会话中启用本地 MCP Channel，启动器沿用原会话 ID。 |
+
+这里的 Claude 支持具体指 **Claude Code 会话**；普通 Claude Desktop 应用的聊天会话暂不在此适配范围内。
+
+## 在微信开始共享
+
+连接微信并启用对应适配后，使用以下命令：
+
+| 命令 | 作用 |
+| --- | --- |
+| `/enter` | 列出当前 Provider 可共享的会话，每页 10 个。 |
+| `/enter codex` | 浏览 Codex 桌面会话。 |
+| `/enter claude` | 浏览 Claude Code 会话。 |
+| `/enter 2` | 进入当前列表第 2 个会话，后续消息发送到这个会话。 |
+| `/next` / `/prev` | 下一页 / 上一页。 |
+| `/status` | 查看当前 Provider、会话，以及“桌面共享”或“独立会话”状态。 |
+| `/exit` | 退出共享，恢复之前的微信独立会话。 |
+
+配置入口：[Codex 桌面共享](#codex-desktop-sharing) · [Claude Code 共享](#claude-code-session-sharing) · [Windows/WSL2 配置](#windows-wsl2-desktop-sharing)。
+
+## 产品方向
+
+- 以 **微信 + Codex / Claude Code 的桌面会话共享**为核心，优先做好进入、跟进和退出。
+- 沿用所选会话已有的持有者、上下文、工作区和权限设置。
+- 同时保留微信独立会话与显式选择的共享模式。
 
 ## 文档
 
 - [核心架构](./docs/architecture/codexbridge-core-architecture.md)
+- [macOS、Windows 和 Linux 平台适配架构](./docs/architecture/host-platform-adapters.md)
 - [路线图 TODO](./docs/todo/roadmap.md)
 - [Codex Native API TODO](./docs/todo/codex-native-api.md)
 - [Codex Gateway TODO（已暂停）](./docs/todo/codex-gateway.md)
 - [Mission Control TODO（已暂停）](./docs/todo/mission-control.md)
 - [Mission Control 架构（历史参考）](./docs/architecture/mission-control.md)
 - [微信斜杠命令参考](./docs/usage/weixin-slash-commands.md)
+- [Claude Code 会话共享设计](./docs/design/claude-shared-sessions.md)
+- [Windows/WSL2 共享及验证记录](./docs/design/windows-wsl-sharing-architecture.md)
 
 ## 仓库结构
 
@@ -43,18 +78,20 @@ docs/
 
 当前项目集中在以下方向：
 
-1. 以 `微信 + Codex` 为产品中心
-2. 在桥接方向进一步明确前，不继续扩展更多后端和包
+1. 以 `微信 + Codex / Claude Code` 的桌面会话共享为产品中心
+2. 优先保证会话连续性和输出送达，再考虑扩展更多后端和包
 3. 将 `codex-gateway` 和 `mission-control` 保持为暂停状态
 4. 仅保留 `codex-native-api` 作为未来选项，而不是当前工作流
 
 目前已经实现的桥接能力包括：
 
+- Codex 桌面会话与 Claude Code 会话共享，统一使用 `/enter`、`/status`、`/exit` 进入、查看和退出
+- 跟进正在运行的共享任务、同步可见输出、发送结束耗时通知，并保存已确认输出以便重启恢复
 - 面向微信的核心会话路由和斜杠命令，包括 `/helps`、`/status`、`/usage`、`/login`、`/stop`、`/review`、`/plan`、`/skills`、`/plugins`、`/automation`、`/weibo`、`/new`、`/uploads`、`/as`、`/log`、`/todo`、`/remind`、`/note`、`/provider`、`/models`、`/model`、`/personality`、`/instructions`、`/fast`、`/threads`、`/search`、`/next`、`/prev`、`/open`、`/enter`、`/exit`、`/peek`、`/rename`、`/permissions`、`/allow`、`/deny`、`/reconnect`、`/retry`、`/restart` 和 `/lang`
 - `/open` 会重新绑定当前微信会话，并立即返回简短的最近对话预览，无需先调用 `/peek`
 - 基于 JSON 文件的持久化桥接状态仓库
 - 微信 iLink 兼容适配：配置加载、二维码账户状态复用、私聊消息标准化、长轮询、上下文令牌持久化、文本分段、文本和输入状态发送
-- Codex Profile 加载器及 Codex app-server 客户端/插件路径
+- 用于微信独立 Codex 会话的 Profile 加载器及 Codex app-server 客户端/插件路径
 - 微信运行时：把轮询事件交给共享协调器，并通过微信通道发送回复
 - 面向非 OpenAI Chat Completions Provider 的 OpenAI-compatible Responses 适配器，支持压缩回退、SSE 转换、工具调用修复、Provider/模型能力规则及显式启用的在线测试
 
@@ -117,7 +154,7 @@ IFLOW_API_KEY / IFLOW_BASE_URL / IFLOW_MODEL
 /auto list
 /auto rename 1 晚间部署巡检
 /auto del 1
-/as 今天修复了 /pg search 日记召回太宽的问题 #CodexBridge
+/as 今天修复了 /pg search 日记召回太宽的问题 #wxBridage
 /as 明天上午10点提醒我给王总回电话
 /as ok
 /as edit 把王总改成李总，时间改成明天上午11点
@@ -211,7 +248,7 @@ IFLOW_API_KEY / IFLOW_BASE_URL / IFLOW_MODEL
 这些命令用于管理微信个人助理记录。`/as` 是日志、待办、提醒和笔记的自然语言入口：Codex 会判断消息是在创建记录，还是管理已有记录；只有 Provider 不可用时，才使用保守的本地关键词规则。需要强制指定分类时，可以直接使用 `/log`、`/todo`、`/remind` 或 `/note`。
 
 ```text
-/as 今天修复了 /pg search 日记召回太宽的问题 #CodexBridge
+/as 今天修复了 /pg search 日记召回太宽的问题 #wxBridage
 /as 明天上午10点提醒我给王总回电话
 /as ok
 /as 给王总回电话这件事已经完成了
@@ -249,7 +286,7 @@ IFLOW_API_KEY / IFLOW_BASE_URL / IFLOW_MODEL
 
 OpenAI-compatible 运行时适配器：
 
-- CodexBridge 可以把非 OpenAI Provider 暴露成本地 Responses 适配器，同时让 Codex app-server 继续访问 Responses 形式的端点
+- wxBridage 可以把非 OpenAI Provider 暴露成本地 Responses 适配器，同时让 Codex app-server 继续访问 Responses 形式的端点
 - 适配器支持 `/responses/compact`、Chat Completions 转换、流错误映射、CLIProxyAPI 顶层流错误块、流读取失败封装、可配置的临时上游重试、Gemini `usageMetadata` 等 usage 回退、模型思考策略、CLIProxyAPI 风格的 payload 兼容、匹配规则、多模态能力和模型元数据
 - DeepSeek、MiniMax、Qwen、OpenRouter、Kimi、Gemini 和 iFlow 使用 `providerKind: openai-compatible`，仅通过环境变量和能力预设区分，不各自实现独立插件类
 - 模型能力目录遵循 CLIProxyAPI 的数据化方向：把 thinking、payload、工具、多模态、令牌上限等差异放在数据中，执行器保持通用
@@ -351,13 +388,16 @@ npm run test:live-agent
 
 ## 快速部署
 
-CodexBridge 当前以源代码仓库形式分发。根包保持 `private`，请克隆仓库后安装依赖，不要尝试把它作为 npm 包发布或安装。
+wxBridage 当前以源代码仓库形式分发。根包保持 `private`，请克隆仓库后安装依赖，不要尝试把它作为 npm 包发布或安装。
+
+配置示例沿用现有的 `CODEXBRIDGE_*` 环境变量和 `.codexbridge` 状态目录，按示例填写即可。
 
 ### 通用前置条件
 
 - Node.js `>= 24`
 - `npm`
-- 宿主机已经完成 Codex CLI 登录
+- 使用 Codex 功能时，宿主机已经完成 Codex CLI 登录
+- 共享 Claude 时，已安装并授权 Claude Code CLI，且已在所选会话中启用 Channel
 
 克隆后建议先检查：
 
@@ -375,7 +415,7 @@ npm install -g @openai/codex@latest --include=optional
 codex --version
 ```
 
-如果 `codex --version` 仍然失败，请先修复 Codex CLI，再运行 `weixin:login` 或 `weixin:serve`。
+按 Codex 路径部署时，如果 `codex --version` 仍然失败，请先修复再继续下列命令。Claude Code 的会话和 Channel 配置见对应共享章节。
 
 ### Linux
 
@@ -489,7 +529,9 @@ WEIXIN_ALLOWED_USERS=wxid_owner
 
 首次配置时，可以临时启用 `CODEXBRIDGE_DEBUG_WEIXIN=1`，发送一条微信消息，然后从日志中的 `scope_not_allowed` 记录读取 `scopeId`。把它加入 `WEIXIN_ALLOWED_USERS` 后关闭调试并重启服务。仅在部署环境已有其他访问控制时，才建议显式使用 `WEIXIN_DM_POLICY=open`。旧的 `pairing` 值已不受支持，会按 `allowlist` 进行失败关闭。
 
-### 在 macOS 上共享 Codex 桌面会话
+<a id="codex-desktop-sharing"></a>
+
+### 共享 Codex 桌面会话
 
 微信会话可以显式进入已有的 Codex 桌面线程，通过桌面应用发送文字，而不是为同一线程启动第二个写入者。在服务环境文件中启用：
 
@@ -503,7 +545,7 @@ CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD=1
 
 只要桌面应用和桥接服务仍在运行，Mac 保持唤醒和联网，锁屏时也能继续发送消息。它不会解锁电脑或改变电源设置；需要操作已解锁桌面的任务仍可能阻塞。如果线程没有桌面所有者，请先在桌面应用中打开一次。桌面协调协议是内部版本化协议，桌面应用升级后可能需要同步升级桥接器。不兼容或没有所有者时会明确失败，不会自动切换 GUI 模式或启动第二个写入者。提交后发生超时或断开时，消息可能已经被接受，重发前请先检查线程。
 
-发送 `/exit` 退出桌面线程。CodexBridge 不会修改原桌面线程，而是恢复进入共享前绑定的微信独立线程；只有原独立线程不可用时才新建。共享回复仍在运行时也可以 `/exit`：已提交的任务会在原桌面线程继续，新消息会等待它完成，再进入独立线程。`/status` 会显示当前是“桌面共享”还是“独立会话”。
+发送 `/exit` 退出桌面线程。wxBridage 不会修改原桌面线程，而是恢复进入共享前绑定的微信独立线程；只有原独立线程不可用时才新建。共享回复仍在运行时也可以 `/exit`：已提交的任务会在原桌面线程继续，新消息会等待它完成，再进入独立线程。`/status` 会显示当前是“桌面共享”还是“独立会话”。
 
 进入正在运行的桌面线程时，桥接器会附加只读输出观察器。未完成轮次和之后从桌面启动的轮次，其可见助手消息会按节流后的完整分段同步到微信，最后发送去重后的最终结果。已完成历史、推理和工具日志不会发送。观察器会在 `/exit`、绑定变化或服务关闭时停止，并会在服务重启后恢复已持久化的共享绑定。桌面线程忙碌时不会接受微信的第二条 Prompt。输出以桌面记录写入 rollout 日志为准，并非逐 Token 流式传输；退出瞬间已经在发送的消息仍可能到达。
 
@@ -522,22 +564,69 @@ CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD=1
 
 当前限制：
 
-- 仅支持 macOS 和 ChatGPT/Codex 桌面应用
+- 支持原有 macOS 桌面共享，并新增下述 Windows/WSL2 适配；Windows/WSL 实机端到端验收仍待完成
 - 桌面应用必须保持运行，并拥有选中的线程
 - Mac 必须保持登录、唤醒和联网；IPC 支持锁屏，但休眠或退出登录后不能即时处理
 - 桌面协调协议必须兼容（当前检查的桌面版本使用 owner discovery v1 和 follower start-turn v2）
 - 支持纯文本和带微信转写文本的语音；图片、文件、视频和没有转写的语音会明确失败，不会回退到第二个写入者
-- `/stop` 和微信端审批暂时不能控制桌面拥有的轮次
+- `/stop`、`/retry`、`/review`、`/compact`、`/goal` 和微信端审批暂时不能控制桌面拥有的轮次，请在桌面执行这些操作
 
 `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=ipc` 是默认值。可以用 `CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET` 指定绝对 Socket 路径，否则使用 `$CODEX_HOME/ipc/ipc.sock`（或 `~/.codex/ipc/ipc.sock`）。Socket 及所在目录必须归当前用户所有，且其他用户不可写。
 
 旧版桌面应用可以显式设置 `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=gui`，使用旧的深层链接和回车键方式。该兼容模式要求 macOS 辅助功能权限及已解锁桌面；IPC 失败时绝不会自动切换到 GUI。GUI 可选参数为 `CODEXBRIDGE_CODEX_DESKTOP_APP_NAME` 和 `CODEXBRIDGE_CODEX_DESKTOP_SUBMIT_DELAY_MS`。两种模式都支持 `CODEXBRIDGE_CODEX_DESKTOP_POLL_INTERVAL_MS`、`CODEXBRIDGE_CODEX_DESKTOP_TIMEOUT_MS` 和 `CODEXBRIDGE_CODEX_DESKTOP_MAX_PROMPT_CHARS`；IPC 当前最多接受 16,000 字符。
 
+<a id="windows-wsl2-desktop-sharing"></a>
+
+### Windows 和 WSL2 桌面共享
+
+0.1.17 新增 Windows 本地命名管道适配，WSL2 通过随仓库提供的 PowerShell 小助手连接。Windows Codex 桌面端必须保持运行，与助手使用同一个 Windows 用户，并持有所选会话。没有桌面持有者的普通 CLI 会话无法透明接管。目前已提供模拟连接和路由测试；Windows/WSL 桌面及锁屏微信往返仍需实机验收。
+
+桥接器直接运行在 Windows 时，可以在 PowerShell 启动前配置；使用服务时，把对应的 `KEY=value` 写入服务环境文件：
+
+~~~powershell
+$env:CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD = "1"
+$env:CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT = "ipc"
+$env:CODEXBRIDGE_CODEX_DESKTOP_HOME = "$env:USERPROFILE\.codex"
+$env:CODEXBRIDGE_CODEX_DESKTOP_HOST_ID = "local"
+npm run weixin:serve
+~~~
+
+桥接器运行在 WSL2，目标是 **Windows 本地桌面会话**时：
+
+~~~bash
+export CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD=1
+export CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=ipc
+export CODEXBRIDGE_CODEX_DESKTOP_HOME='/mnt/c/Users/Alice/.codex'
+export CODEXBRIDGE_CODEX_DESKTOP_HOST_ID=local
+npm run weixin:serve
+~~~
+
+把 Alice 和挂载路径换成实际值。目标是 **Windows 桌面端持有的 WSL Agent 会话**时，改成该 Agent 实际使用的目录和准确发行版主机，例如：
+
+~~~bash
+export CODEXBRIDGE_CODEX_DESKTOP_HOME='/home/alice/.codex'
+export CODEXBRIDGE_CODEX_DESKTOP_HOST_ID='remote-wsl:Ubuntu'
+~~~
+
+发行版名称保留大小写并使用 URI 编码，例如 `Ubuntu Work` 对应 `remote-wsl:Ubuntu%20Work`。目录必须能被桥接器所在发行版读取，并与目标 Agent 一致。Windows 和 WSL 默认目录不同，因此 WSL 下必须显式设置桌面目录；桥接器不会改动独立会话的 `CODEX_HOME` 或复制认证文件。
+
+连接只使用本机 `\\.\pipe\codex-ipc`，也可通过 `CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET` 指定其他本机管道，不开放 TCP 端口。助手在发送桌面数据前检查管道服务端的 Windows 用户 SID。需要 Windows PowerShell 5.1/.NET、运行已审阅本地助手脚本的权限，以及可用的 WSL interoperability；助手不会修改执行策略或自动提权。策略阻止脚本时，请先检查 `Get-ExecutionPolicy -List`，按所在环境批准的策略处理。可以用 `CODEXBRIDGE_CODEX_DESKTOP_POWERSHELL_BIN` 指定系统 PowerShell 的绝对路径；Windows 挂载方式不同于默认值时，请指定 WSL 可执行的绝对路径。WSL 桥接器无需额外安装 Windows Node。
+
+按配置启动或重启桥接器后，在微信发送 `/enter`，再用 `/enter 2` 选择，通过 `/status` 查看桌面主机。每个桥接器配置一个目录和主机；修改目标后必须重新 `/enter`。桌面目录是只读列表，支持 `/peek`、`/search`、`/next` 和 `/prev`；归档、重命名等管理操作请在桌面完成。`/threads` 切回独立会话列表。共享入口不可用时，`/exit` 仍能恢复之前的微信独立会话。
+
+两种共享环境均保留前述可见输出同步、去重和单独的结束耗时通知。电脑及相关进程保持登录、唤醒和联网时，IPC 可以在锁屏后继续工作；关闭 WSL 会停止其中的桥接器，仅有 systemd 服务不能保证 WSL 实例持续运行。GUI 提交仍仅适用于 macOS。
+
+找不到兼容持有者时，请先在 Windows 桌面打开目标会话，核对主机与目录。`owner-mismatch` 或 `owner-query-failed` 表示无法验证管道归属，应使用同一个 Windows 账户运行相关程序，不应绕过检查。协议不兼容需要更新适配。提交后确认丢失会提示“可能已提交”，不会自动重发。目录和日志读取都有上限，列表不完整时会显示说明。
+
+路由版本和实机验证范围见[已确认架构及验证记录](docs/design/windows-wsl-sharing-architecture.md)。降级到旧版桥接器之前，请先 `/exit` 解除新增的桌面专用绑定。
+
+<a id="claude-code-session-sharing"></a>
+
 ### 共享已有 Claude Code 会话
 
 微信服务还注册了 `claude-code` 共享 Provider。发送 `/enter claude` 浏览本地 Claude Code 会话，每页 10 个；再发送 `/enter <序号>` 进入。仅列出会话不会改变当前 Provider 或绑定。`/enter codex` 返回 Codex 会话列表。`/status` 显示绑定的 Provider 和共享模式；`/exit` 恢复共享前的微信独立会话，包括原本使用 Codex 的会话。
 
-需要先在选中的交互式 Claude Code CLI 会话中启用 Channel。在 CodexBridge 安装目录执行：
+需要先在选中的交互式 Claude Code CLI 会话中启用 Channel。在 wxBridage 安装目录执行：
 
 ```bash
 node --import tsx src/cli.ts claude share <existing-Claude-session-UUID>
@@ -576,7 +665,7 @@ CODEXBRIDGE_LOCALE=en npm run weixin:serve
 
 重要限制：
 
-- 服务管理器只能在电脑开机且操作系统正常运行时保持 CodexBridge 在线
+- 服务管理器只能在电脑开机且操作系统正常运行时保持 wxBridage 在线
 - 主机断电、休眠或离线时不能接收消息
 - 桌面系统的用户级服务依赖用户会话模型；Linux `linger` 和 macOS `launchd` 不要求终端一直打开，下面的 Windows 计划任务在用户登录后运行
 

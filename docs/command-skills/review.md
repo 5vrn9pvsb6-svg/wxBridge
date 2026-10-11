@@ -1,8 +1,8 @@
-# CodexBridge Command Skill: /review
+# wxBridage Command Skill: /review
 
 ## Purpose
 
-This file defines how Codex should understand and normalize natural-language CodexBridge `/review` requests when Bridge explicitly asks Codex to use this project-local command skill.
+This file defines how Codex should understand and normalize natural-language wxBridage `/review` requests when Bridge explicitly asks Codex to use this project-local command skill.
 
 `/review` is a read-only code-review command. Codex may classify the user's intent and choose a review target, but Bridge is the only component allowed to invoke the actual review execution path.
 

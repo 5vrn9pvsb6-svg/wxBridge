@@ -1293,6 +1293,17 @@ export class BridgeCoordinator {
     if (commandName !== 'helps' && command.args.some((arg) => isHelpFlag(arg))) {
       return this.handleHelpsCommand(event, [commandName]);
     }
+    if (['retry', 'compact', 'goal', 'review'].includes(commandName)) {
+      const scopeRef = toScopeRef(event);
+      const session = this.bridgeSessions.resolveScopeSession(scopeRef);
+      if (session && (session.desktopTarget || this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) === 'desktop_shared')) {
+        const profile = this.requireProviderProfile(session.providerProfileId);
+        const plugin = this.providerRegistry.getProvider(profile.providerKind);
+        if (session.desktopTarget || typeof plugin.getDesktopTarget === 'function') {
+          return messageResponse([this.t('coordinator.desktopCatalog.commandUnsupported', { command: commandName })], buildSessionMeta(session));
+        }
+      }
+    }
     switch (commandName) {
       case 'help':
       case 'helps':
@@ -1442,6 +1453,16 @@ export class BridgeCoordinator {
     const usageReport = await this.resolveProviderUsage(providerProfile);
     const settings = session ? this.bridgeSessions.getSessionSettings(session.id) : null;
     const executionMode = this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) ?? 'standalone';
+    const desktopStatusLines: string[] = [];
+    if (executionMode === 'desktop_shared') {
+      const saved = this.bridgeSessions.resolveScopeBinding?.(scopeRef)?.desktopTarget ?? session?.desktopTarget;
+      let configured = null;
+      let unavailable = false;
+      try { configured = this.providerRegistry.getProvider(providerProfile.providerKind).getDesktopTarget?.(); }
+      catch { unavailable = true; }
+      if (saved || configured) { desktopStatusLines.push(this.t('coordinator.desktopCatalog.host', { host: (saved ?? configured).label })); }
+      if (unavailable || (saved && configured?.key !== saved.key)) { desktopStatusLines.push(this.t('coordinator.desktopCatalog.stale')); }
+    }
     const instructionsSnapshot = await this.codexInstructionsManager.readInstructions();
     const modelValue = await this.resolveStatusModelValue(providerProfile, settings);
     const lastArtifactDelivery = resolveStoredArtifactDelivery(settings);
@@ -1463,6 +1484,7 @@ export class BridgeCoordinator {
     }
     const activeTurn = this.activeTurns?.resolveScopeTurn(scopeRef) ?? null;
     const simpleLines = [
+      ...desktopStatusLines,
       this.t('coordinator.status.interfaceProfile', { id: providerProfile.id }),
       this.t('coordinator.status.threadTitle', {
         value: formatCurrentBindingTitle(session.title, session.codexThreadId, this.currentI18n),
@@ -1481,6 +1503,7 @@ export class BridgeCoordinator {
     ];
     const permissionsState = resolvePermissionsState(settings);
     const detailLines = [
+      ...desktopStatusLines,
       this.t('coordinator.status.scope', { scope: `${event.platform}:${event.externalScopeId}` }),
       this.t('coordinator.status.bridgeSession', { id: session.id }),
       this.t('coordinator.status.providerProfile', { id: providerProfile.id }),
@@ -3305,6 +3328,10 @@ export class BridgeCoordinator {
 
   async handleThreadsCommand(event, args = []) {
     const action = String(args[0] ?? '').trim().toLowerCase();
+    if (this.getThreadBrowserState(event)?.desktopTarget && action && !['all', 'pinned'].includes(action)
+      && !(action === 'pin' && args.length === 1)) {
+      return messageResponse([this.t('coordinator.desktopCatalog.readOnly')], this.buildScopedSessionMeta(event));
+    }
     if (action === 'confirm' || action === 'ok') {
       return this.handleThreadsConfirmCommand(event);
     }
@@ -3364,6 +3391,13 @@ export class BridgeCoordinator {
 
   async handleSearchCommand(event, args) {
     const searchTerm = args.join(' ').trim();
+    const desktopBrowser = this.getThreadBrowserState(event);
+    if (desktopBrowser?.desktopTarget) {
+      return this.renderThreadsPage(event, {
+        providerProfileId: desktopBrowser.providerProfileId, cursor: null, previousCursors: [],
+        searchTerm, pageNumber: 1, includeArchived: false, onlyPinned: false, selectionAction: 'enter',
+      });
+    }
     if (!searchTerm) {
       return messageResponse([
         this.t('coordinator.search.usage'),
@@ -4273,6 +4307,9 @@ export class BridgeCoordinator {
   }
 
   async handleOpenCommand(event, args) {
+    if (this.getThreadBrowserState(event)?.desktopTarget) {
+      return messageResponse([this.t('coordinator.desktopCatalog.useEnter')], this.buildScopedSessionMeta(event));
+    }
     const activeResponse = await this.rejectIfActiveTurnForCommand(event, 'open');
     if (activeResponse) {
       return activeResponse;
@@ -4380,7 +4417,10 @@ export class BridgeCoordinator {
         this.t('coordinator.enter.unavailable'),
       ], this.buildScopedSessionMeta(event));
     }
-    await providerPlugin.prepareDesktopThreadSharing?.({ threadId: resolvedThread.threadId });
+    const preparedDesktopThread = await providerPlugin.prepareDesktopThreadSharing?.({
+      threadId: resolvedThread.threadId,
+      expectedTargetKey: resolvedThread.desktopTarget?.key,
+    });
     const session = await this.bridgeSessions.bindScopeToProviderThread(
       scopeRef,
       {
@@ -4390,6 +4430,7 @@ export class BridgeCoordinator {
       {
         executionMode: 'desktop_shared',
         standaloneBridgeSessionId: rememberedStandaloneSessionId,
+        preparedDesktopThread: preparedDesktopThread || null,
         initialSettings: currentSession?.providerProfileId === providerProfile.id
           ? this.buildReboundSessionSettings(currentSettings, {
             locale: this.resolveScopeLocale(scopeRef, event),
@@ -4419,7 +4460,10 @@ export class BridgeCoordinator {
     if (!plugin.isDesktopThreadRelayAvailable?.(event) || typeof plugin.observeDesktopThread !== 'function') {
       return null;
     }
-    return { threadId: session.codexThreadId, bridgeSessionId: session.id, providerProfileId: session.providerProfileId };
+    return {
+      threadId: session.codexThreadId, bridgeSessionId: session.id, providerProfileId: session.providerProfileId,
+      desktopTargetKey: this.bridgeSessions.resolveScopeBinding?.(scopeRef)?.desktopTarget?.key ?? session.desktopTarget?.key ?? null,
+    };
   }
 
   listDesktopSharedScopes() {
@@ -4431,7 +4475,7 @@ export class BridgeCoordinator {
     if (!target) { return; }
     const profile = this.requireProviderProfile(target.providerProfileId);
     const plugin = this.providerRegistry.getProvider(profile.providerKind);
-    await plugin.observeDesktopThread({ threadId: target.threadId, ...options });
+    await plugin.observeDesktopThread({ threadId: target.threadId, expectedTargetKey: target.desktopTargetKey, ...options });
   }
 
   async handleExitCommand(event) {
@@ -5724,6 +5768,9 @@ export class BridgeCoordinator {
   }
 
   async handleRenameCommand(event, args) {
+    if (this.getThreadBrowserState(event)?.desktopTarget) {
+      return messageResponse([this.t('coordinator.desktopCatalog.readOnly')], this.buildScopedSessionMeta(event));
+    }
     const activeResponse = await this.rejectIfActiveTurnForCommand(event, 'rename');
     if (activeResponse) {
       return activeResponse;
@@ -5762,11 +5809,11 @@ export class BridgeCoordinator {
     if (!resolvedThread.ok) {
       return messageResponse([resolvedThread.message], this.buildScopedSessionMeta(event));
     }
-    const thread = await this.bridgeSessions.readProviderThread(
-      resolvedThread.providerProfileId,
-      resolvedThread.threadId,
-      { includeTurns: true },
-    );
+    const profile = this.requireProviderProfile(resolvedThread.providerProfileId);
+    const plugin = this.providerRegistry.getProvider(profile.providerKind);
+    const thread = resolvedThread.desktopTarget && plugin.readDesktopThread
+      ? await plugin.readDesktopThread({ providerProfile: profile, threadId: resolvedThread.threadId, expectedTargetKey: resolvedThread.desktopTarget.key })
+      : await this.bridgeSessions.readProviderThread(resolvedThread.providerProfileId, resolvedThread.threadId, { includeTurns: true });
     if (!thread) {
       return messageResponse([this.t('coordinator.peek.notFound', { threadId: resolvedThread.threadId })], this.buildScopedSessionMeta(event));
     }
@@ -6114,6 +6161,14 @@ export class BridgeCoordinator {
     const scopeRef = toScopeRef(event);
     const active = await this.reconcileActiveTurn(scopeRef);
     const session = this.bridgeSessions.resolveScopeSession(scopeRef);
+    const trackedSession = active?.bridgeSessionId ? this.bridgeSessions.getSessionById(active.bridgeSessionId) : null;
+    const sharedSession = trackedSession?.desktopTarget ? trackedSession
+      : this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) === 'desktop_shared' ? session : null;
+    if (sharedSession && (sharedSession.desktopTarget || typeof this.providerRegistry.getProvider(
+      this.requireProviderProfile(sharedSession.providerProfileId).providerKind,
+    ).getDesktopTarget === 'function')) {
+      return messageResponse([this.t('coordinator.desktopCatalog.stopUnsupported')], buildSessionMeta(sharedSession));
+    }
     if (!active && session && this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) === 'desktop_shared') {
       const profile = this.requireProviderProfile(session.providerProfileId);
       const plugin = this.providerRegistry.getProvider(profile.providerKind);
@@ -9293,7 +9348,11 @@ export class BridgeCoordinator {
     const scopeRef = toScopeRef(event);
     const current = this.bridgeSessions.resolveScopeSession(scopeRef);
     const providerProfile = this.requireProviderProfile(providerProfileId);
-    const result = await this.bridgeSessions.listProviderThreads(providerProfile.id, {
+    const plugin = this.providerRegistry.getProvider(providerProfile.providerKind);
+    const desktopCatalog = selectionAction === 'enter' && typeof plugin.listDesktopThreads === 'function';
+    const result = desktopCatalog ? await plugin.listDesktopThreads({
+      providerProfile, limit: THREAD_PAGE_SIZE, cursor, searchTerm,
+    }) : await this.bridgeSessions.listProviderThreads(providerProfile.id, {
       limit: THREAD_PAGE_SIZE,
       cursor,
       searchTerm,
@@ -9314,6 +9373,20 @@ export class BridgeCoordinator {
         selectionAction,
       });
     }
+    this.setThreadBrowserState(event, {
+      providerProfileId: providerProfile.id,
+      cursor,
+      previousCursors,
+      nextCursor: result.nextCursor,
+      searchTerm,
+      pageNumber,
+      items: result.items,
+      includeArchived,
+      onlyPinned,
+      selectionAction,
+      desktopTarget: result.desktopTarget ?? null,
+      updatedAt: this.now(),
+    });
     if (result.items.length === 0) {
       if (searchTerm) {
         return textResponse([
@@ -9336,32 +9409,24 @@ export class BridgeCoordinator {
       ].join('\n'), current ? buildSessionMeta(current) : undefined);
     }
 
-    this.setThreadBrowserState(event, {
-      providerProfileId: providerProfile.id,
-      cursor,
-      previousCursors,
-      nextCursor: result.nextCursor,
-      searchTerm,
-      pageNumber,
-      items: result.items,
-      includeArchived,
-      onlyPinned,
-      selectionAction,
-      updatedAt: this.now(),
-    });
-    return textResponse(renderThreadsPageMessage({
-      i18n: this.currentI18n,
-      providerProfile,
-      currentSession: current,
-      items: result.items,
-      pageNumber,
-      searchTerm,
-      includeArchived,
-      onlyPinned,
-      selectionAction,
-      hasPreviousPage: previousCursors.length > 0,
-      hasNextPage: Boolean(result.nextCursor),
-    }), current ? buildSessionMeta(current) : undefined);
+    return textResponse([
+      ...(result.desktopTarget ? [this.t('coordinator.desktopCatalog.host', { host: result.desktopTarget.label })] : []),
+      ...(result.truncated ? [this.t('coordinator.desktopCatalog.truncated')] : []),
+      renderThreadsPageMessage({
+        i18n: this.currentI18n,
+        providerProfile,
+        currentSession: current,
+        items: result.items,
+        pageNumber,
+        searchTerm,
+        includeArchived,
+        onlyPinned,
+        selectionAction,
+        desktopCatalog: Boolean(result.desktopTarget),
+        hasPreviousPage: previousCursors.length > 0,
+        hasNextPage: Boolean(result.nextCursor),
+      }),
+    ].join('\n'), current ? buildSessionMeta(current) : undefined);
   }
 
   async listCodexExperimentalFeatures(): Promise<CodexExperimentalFeatureInfo[]> {
@@ -11124,6 +11189,13 @@ export class BridgeCoordinator {
     if (!activeTurn) {
       return null;
     }
+    const activeSession = activeTurn.bridgeSessionId ? this.bridgeSessions.getSessionById(activeTurn.bridgeSessionId) : null;
+    if (activeSession?.desktopTarget || (this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) === 'desktop_shared'
+      && this.bridgeSessions.resolveScopeSession(scopeRef)?.id === activeTurn.bridgeSessionId)) {
+      // The desktop relay's tracked promise determines completion. Reading the
+      // independent app-server here can incorrectly clear a foreign-host turn.
+      return activeTurn;
+    }
     if (!activeTurn.providerProfileId || !activeTurn.threadId || !activeTurn.turnId) {
       return activeTurn;
     }
@@ -11403,6 +11475,7 @@ export class BridgeCoordinator {
         ok: true,
         providerProfileId: state.providerProfileId,
         threadId: item.threadId,
+        desktopTarget: state.desktopTarget ?? null,
         archivedAt: typeof item.archivedAt === 'number' ? item.archivedAt : null,
         pinnedAt: typeof item.pinnedAt === 'number' ? item.pinnedAt : null,
       };
@@ -11415,6 +11488,7 @@ export class BridgeCoordinator {
       ok: true,
       providerProfileId,
       threadId: value,
+      desktopTarget: state?.desktopTarget ?? null,
       archivedAt: typeof metadata?.archivedAt === 'number' ? metadata.archivedAt : null,
       pinnedAt: typeof metadata?.pinnedAt === 'number' ? metadata.pinnedAt : null,
     };
@@ -11600,6 +11674,9 @@ export class BridgeCoordinator {
   }
 
   async startTurnWithRecovery(scopeRef, session, event, options: StartTurnOptions = {}) {
+    const desktopShared = Boolean(session?.desktopTarget)
+      || (this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) === 'desktop_shared'
+        && this.bridgeSessions.resolveScopeSession(scopeRef)?.id === session?.id);
     const stopCheckpoint = session ? this.resolveStopCheckpoint(session.id) : null;
     const shouldLazyResumeStoppedThread = Boolean(
       stopCheckpoint
@@ -11618,6 +11695,7 @@ export class BridgeCoordinator {
     try {
       return await this.startTurnOnSession(session, event, options);
     } catch (error) {
+      if (desktopShared) { throw error; }
       debugCoordinator('turn_recovery_error', {
         platform: scopeRef.platform,
         scopeId: scopeRef.externalScopeId,
@@ -11647,20 +11725,21 @@ export class BridgeCoordinator {
     const providerProfile = this.requireProviderProfile(session.providerProfileId);
     const providerPlugin = this.providerRegistry.getProvider(providerProfile.providerKind);
     let sessionSettings = this.bridgeSessions.getSessionSettings(session.id);
-    const turnArtifactContext = createTurnArtifactContext({
+    const boundSession = this.bridgeSessions.resolveScopeSession(scopeRef);
+    const executionMode = boundSession?.id === session.id
+      ? this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) ?? 'standalone'
+      : 'standalone';
+    const turnArtifactContext = executionMode === 'desktop_shared' ? null : createTurnArtifactContext({
       bridgeSessionId: session.id,
       cwd: normalizeCwd(session.cwd) ?? this.resolveEventCwd(event),
       intent: null,
     });
     const pendingArtifactDelivery = createPendingTurnArtifactDeliveryState(turnArtifactContext);
     ensureTurnArtifactDirectories(turnArtifactContext);
-    const boundSession = this.bridgeSessions.resolveScopeSession(scopeRef);
-    const executionMode = boundSession?.id === session.id
-      ? this.bridgeSessions.resolveScopeExecutionMode?.(scopeRef) ?? 'standalone'
-      : 'standalone';
     const turnEvent = withCodexbridgeMetadata(
       withTurnArtifactContext(event, turnArtifactContext),
-      { executionMode },
+      { executionMode, desktopTargetKey: executionMode === 'desktop_shared'
+        ? this.bridgeSessions.resolveScopeBinding?.(scopeRef)?.desktopTarget?.key ?? session.desktopTarget?.key ?? null : null },
     );
     this.activeTurns?.updateScopeTurn(scopeRef, {
       bridgeSessionId: session.id,
@@ -11743,6 +11822,7 @@ export class BridgeCoordinator {
           },
         });
       } catch (error) {
+        if (executionMode === 'desktop_shared') { throw error; }
         const failureMessage = formatUserError(error);
         if (
           !attemptedModelReset
@@ -11763,7 +11843,7 @@ export class BridgeCoordinator {
         throw error;
       }
       const providerErrorMessage = typeof result?.errorMessage === 'string' ? result.errorMessage.trim() : '';
-      if (result?.outputState === 'provider_error' && providerErrorMessage) {
+      if (executionMode !== 'desktop_shared' && result?.outputState === 'provider_error' && providerErrorMessage) {
         if (
           !attemptedModelReset
           && this.maybeResetUnsupportedCodexModel(session, sessionSettings, providerErrorMessage)
@@ -11787,7 +11867,7 @@ export class BridgeCoordinator {
       result,
       context: turnArtifactContext,
     });
-    if (shouldRecoverFromProviderTurnResult(finalizedResult)) {
+    if (executionMode !== 'desktop_shared' && shouldRecoverFromProviderTurnResult(finalizedResult)) {
       const errorMessage = finalizedResult.errorMessage || 'Codex turn failed with a recoverable provider error';
       debugCoordinator('turn_result_recoverable_provider_error', {
         platform: scopeRef.platform,
@@ -17101,6 +17181,7 @@ function renderThreadsPageMessage({
   includeArchived,
   onlyPinned,
   selectionAction = 'open',
+  desktopCatalog = false,
   hasPreviousPage,
   hasNextPage,
 }) {
@@ -17146,6 +17227,7 @@ function renderThreadsPageMessage({
     includeArchived,
     onlyPinned,
     selectionAction: resolvedSelectionAction,
+    desktopCatalog,
     hasPreviousPage,
     hasNextPage,
     exampleIndex: Math.min(2, Math.max(1, items.length)),
@@ -17157,11 +17239,12 @@ function renderThreadsPageMessage({
   return lines.join('\n').trim();
 }
 
-function buildThreadsFooter({ i18n, includeArchived, onlyPinned, selectionAction, hasPreviousPage, hasNextPage, exampleIndex, restoreIndex, pinnedIndex }: {
+function buildThreadsFooter({ i18n, includeArchived, onlyPinned, selectionAction, desktopCatalog = false, hasPreviousPage, hasNextPage, exampleIndex, restoreIndex, pinnedIndex }: {
   i18n: Translator;
   includeArchived: boolean;
   onlyPinned: boolean;
   selectionAction?: 'open' | 'enter';
+  desktopCatalog?: boolean;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
   exampleIndex: number;
@@ -17171,7 +17254,9 @@ function buildThreadsFooter({ i18n, includeArchived, onlyPinned, selectionAction
   const index = Number(exampleIndex || 1);
   const resolvedRestoreIndex = Number(restoreIndex || index || 1);
   const resolvedPinnedIndex = Number(pinnedIndex || index || 1);
-  const commands = [
+  const commands = desktopCatalog ? [
+    `/enter ${index}`, `/peek ${index}`, `/search ${i18n.t('common.example.keyword')}`, '/enter', '/threads',
+  ] : [
     `/${selectionAction === 'enter' ? 'enter' : 'open'} ${index}`,
     `/peek ${index}`,
     `/rename ${index} ${i18n.t('common.example.newName')}`,

@@ -36,7 +36,7 @@ The package owns:
 
 The package does not own:
 
-- CodexBridge, CodexNext, or any host UI state.
+- wxBridage, CodexNext, or any host UI state.
 - Chat session persistence.
 - WeChat, Telegram, browser, desktop, or mobile transports.
 - User approval UX.

@@ -1,6 +1,25 @@
 # Changelog
 
-All notable changes to CodexBridge are documented here.
+All notable changes to wxBridage are documented here.
+
+## Unreleased
+
+- Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
+- Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
+
+## 0.1.18 - 2026-10-11
+
+- Extract macOS, Windows and Linux/WSL host implementations into separate provider-local adapters; keep desktop sharing, target identity, errors and IPC contracts unchanged.
+- Move macOS GUI/Unix socket handling, Windows named pipes and CLI/process handling, WSL path conversion, and the Linux secret-tool backend out of common provider flows.
+- Split service environment setup by OS and document the platform boundary.
+
+## 0.1.17 - 2026-10-11
+
+- Add native Windows and WSL2 Codex desktop sharing adapters using a local named pipe and a packaged PowerShell helper with Windows-user verification.
+- Make desktop thread browsing, submission, observation, and persisted bindings use an explicit desktop host/storage identity; keep independent sessions separate.
+- Preserve entry/exit, visible-output deduplication, restart checkpoints, and completion/duration notices. Desktop browsing supports read-only selection, preview, search, and pagination.
+- Document Windows-local and desktop-owned WSL-agent setup in both README languages. Windows/WSL end-to-end acceptance remains pending; the development environment is macOS.
+- Synchronize the Codex client metadata version with the product version.
 
 ## 0.1.16 - 2026-10-11
 

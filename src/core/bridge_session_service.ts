@@ -46,6 +46,7 @@ interface SessionRouterLike {
     updatedAt: number,
     executionMode?: PlatformExecutionMode,
     standaloneBridgeSessionId?: string | null,
+    desktopTarget?: import('../types/core.js').DesktopTargetIdentity | null,
   ): void;
   setExecutionMode(scopeRef: PlatformScopeRef, executionMode: PlatformExecutionMode, updatedAt: number): void;
 }
@@ -270,6 +271,7 @@ export class BridgeSessionService {
     if (!session) {
       throw new NotFoundError(this.i18n.t('service.unknownBridgeSession', { id: bridgeSessionId }));
     }
+    if (session.desktopTarget) { throw new ConfigurationError('Desktop-only sessions require explicit /enter'); }
     this.sessionRouter.bindScope(scopeRef, bridgeSessionId, this.now());
     return session;
   }
@@ -289,12 +291,14 @@ export class BridgeSessionService {
   }
 
   findSessionByProviderThread(providerProfileId: string, codexThreadId: string): BridgeSession | null {
-    return this.bridgeSessions.getByProviderThread(providerProfileId, codexThreadId);
+    return this.bridgeSessions.listByProviderProfileId(providerProfileId)
+      .find(session => session.codexThreadId === codexThreadId && !session.desktopTarget) ?? null;
   }
 
   listSessionsForProviderProfile(providerProfileId: string): BridgeSession[] {
     return this.bridgeSessions
       .listByProviderProfileId(providerProfileId)
+      .filter(session => !session.desktopTarget)
       .sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
@@ -316,14 +320,25 @@ export class BridgeSessionService {
       initialSettings = {},
       executionMode = 'standalone',
       standaloneBridgeSessionId = null,
+      preparedDesktopThread = null,
     }: {
       initialSettings?: Partial<SessionSettings>;
       executionMode?: PlatformExecutionMode;
       standaloneBridgeSessionId?: string | null;
+      preparedDesktopThread?: {
+        thread: import('../types/provider.js').ProviderThreadSummary;
+        desktopTarget: import('../types/core.js').DesktopTargetIdentity;
+      } | null;
     } = {},
   ): Promise<BridgeSession> {
     const normalizedInitialSettings = withNormalizedInitialPermissionsSettings(initialSettings);
-    const existing = this.findSessionByProviderThread(providerProfileId, codexThreadId);
+    if (preparedDesktopThread && (executionMode !== 'desktop_shared' || preparedDesktopThread.thread.threadId !== codexThreadId)) {
+      throw new ConfigurationError('Invalid prepared desktop thread binding');
+    }
+    const existing = preparedDesktopThread
+      ? this.bridgeSessions.listByProviderProfileId(providerProfileId).find(session =>
+        session.codexThreadId === codexThreadId && session.desktopTarget?.key === preparedDesktopThread.desktopTarget.key)
+      : this.findSessionByProviderThread(providerProfileId, codexThreadId);
     if (existing) {
       this.sessionRouter.bindScope(
         scopeRef,
@@ -331,6 +346,7 @@ export class BridgeSessionService {
         this.now(),
         executionMode,
         standaloneBridgeSessionId,
+        preparedDesktopThread?.desktopTarget ?? null,
       );
       this.upsertSessionSettings(existing.id, normalizedInitialSettings);
       return existing;
@@ -340,7 +356,7 @@ export class BridgeSessionService {
       throw new NotFoundError(this.i18n.t('service.unknownProviderProfile', { id: providerProfileId }));
     }
     const providerPlugin = this.providerRegistry.getProvider(providerProfile.providerKind);
-    const thread = await providerPlugin.readThread({
+    const thread = preparedDesktopThread?.thread ?? await providerPlugin.readThread({
       providerProfile,
       threadId: codexThreadId,
       includeTurns: false,
@@ -357,13 +373,14 @@ export class BridgeSessionService {
       providerProfileId: providerProfile.id,
       codexThreadId: thread.threadId,
       cwd: thread.cwd ?? null,
-      title: this.resolveThreadDisplayTitle({
+      title: preparedDesktopThread ? thread.title ?? null : this.resolveThreadDisplayTitle({
         providerProfileId: providerProfile.id,
         threadId: thread.threadId,
         providerTitle: thread.title ?? null,
       }),
       createdAt: now,
       updatedAt: thread.updatedAt ?? now,
+      ...(preparedDesktopThread ? { desktopTarget: preparedDesktopThread.desktopTarget } : {}),
     };
     this.bridgeSessions.save(session);
     this.sessionRouter.bindScope(
@@ -372,6 +389,7 @@ export class BridgeSessionService {
       now,
       executionMode,
       standaloneBridgeSessionId,
+      preparedDesktopThread?.desktopTarget ?? null,
     );
     this.sessionSettings.save({
       bridgeSessionId: session.id,

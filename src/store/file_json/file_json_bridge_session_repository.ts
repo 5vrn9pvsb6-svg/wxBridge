@@ -22,7 +22,7 @@ export class FileJsonBridgeSessionRepository implements BridgeSessionRepository 
 
   getByProviderThread(providerProfileId: string, codexThreadId: string): BridgeSession | null {
     return this.list().find((record) =>
-      record.providerProfileId === providerProfileId && record.codexThreadId === codexThreadId,
+      record.providerProfileId === providerProfileId && record.codexThreadId === codexThreadId && !record.desktopTarget,
     ) ?? null;
   }
 

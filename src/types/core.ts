@@ -17,6 +17,13 @@ export interface BridgeSession {
   title: string | null;
   createdAt: number;
   updatedAt: number;
+  desktopTarget?: DesktopTargetIdentity | null;
+}
+
+export interface DesktopTargetIdentity {
+  key: string;
+  hostId: string;
+  label: string;
 }
 
 export interface SessionSettings {

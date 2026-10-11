@@ -4,7 +4,7 @@ Mission Control is a general-purpose orchestration runtime for long-running
 agent work.
 It should turn user intent, schedules, and tracker items into observable Codex
 work runs instead of treating every request as an isolated chat turn.
-CodexBridge is the first embedding host and control surface, not the long-term
+wxBridage is the first embedding host and control surface, not the long-term
 product boundary of the runtime itself.
 
 This design follows the parts of OpenAI Symphony that fit a Codex-first runtime:
@@ -59,7 +59,7 @@ These projects are references only. Mission Control should not vendor their
 runtime code blindly. The product goal is a provider-pluggable, goal-driven
 runtime for agent-class executors, with Codex as the first concrete provider.
 
-CodexBridge-specific control-surface mapping, migration constraints, and
+wxBridage-specific control-surface mapping, migration constraints, and
 rollout notes are tracked separately in
 [`mission-control-codexbridge-integration.md`](./mission-control-codexbridge-integration.md).
 
@@ -101,7 +101,7 @@ Patterns not copied directly:
 - Linear-only issue polling as the only input source.
 - Elixir/OTP implementation details.
 - PR landing workflow as the only successful outcome.
-- No rich UI. The runtime should be UI-agnostic; CodexBridge can remain the
+- No rich UI. The runtime should be UI-agnostic; wxBridage can remain the
   first chat-first status surface and may later add a web control plane.
 
 ## Symphony Essence To Preserve
@@ -169,7 +169,7 @@ Pieces that should **not** define the final runtime:
 
 ## Recommended Technical Route
 
-The correct route is not "package Symphony into CodexBridge".
+The correct route is not "package Symphony into wxBridage".
 
 The route should be:
 
@@ -252,9 +252,9 @@ In other words:
 
 ## Product Shape
 
-Mission Control should be developed **inside** the CodexBridge repository first,
+Mission Control should be developed **inside** the wxBridage repository first,
 but it should still be treated as a package with a stable ownership boundary so
-it can later serve non-CodexBridge control surfaces:
+it can later serve non-wxBridage control surfaces:
 
 ```text
 packages/mission-control/
@@ -272,20 +272,20 @@ The reverse dependency is not allowed:
 
 ```text
 @codexbridge/mission-control
-  -X-> CodexBridge platform/runtime/command modules
+  -X-> wxBridage platform/runtime/command modules
 ```
 
 This means:
 
-- `CodexBridge` may call Mission Control.
+- `wxBridage` may call Mission Control.
 - Mission Control must not import host adapters, command parsers, delivery
   systems, i18n layers, or host session-storage internals.
 - The first home can be a same-repo internal package; it does **not** need a
   workspace or multi-package release flow yet.
 - The first embedding host may preserve its existing user-facing commands;
   package extraction is an implementation boundary, not a UX change.
-- The long-term runtime target is broader than CodexBridge, even if the first
-  host remains CodexBridge.
+- The long-term runtime target is broader than wxBridage, even if the first
+  host remains wxBridage.
 
 ## Core Product Definition
 
@@ -1290,7 +1290,7 @@ Rules:
 ### 4.6 Host Adapter Boundary
 
 Mission Control must also depend on a host adapter instead of reaching directly
-into CodexBridge session, notification, or approval services.
+into wxBridage session, notification, or approval services.
 
 The host adapter owns host-surface integration only:
 
@@ -1354,7 +1354,7 @@ Host adapter rules:
   input to Mission Control rather than hidden host-local state
 - host adapters may fail independently; Mission Control must persist mission
   truth before attempting host notifications
-- CodexBridge may be the first host adapter, but it must remain a consumer of
+- wxBridage may be the first host adapter, but it must remain a consumer of
   Mission Control rather than the runtime itself
 
 ### 4.7 Host Surface Adapters
@@ -1373,7 +1373,7 @@ Surface-adapter rules:
 ### 5. Workpad
 
 Each mission needs a single persistent workpad. This is the equivalent of
-Symphony's issue comment, adapted first for CodexBridge chat surfaces and later
+Symphony's issue comment, adapted first for wxBridage chat surfaces and later
 for other hosts.
 
 The workpad is not:
@@ -1985,7 +1985,7 @@ Current implementation note:
   source-sync command before the first attempt begins, so hosts do not need to
   patch authoritative mission/checklist/work-item records directly just to keep
   queued source metadata aligned
-- CodexBridge host runtimes now recover stale missions and discover resumable
+- wxBridage host runtimes now recover stale missions and discover resumable
   `/agent` work through package-owned supervision rather than resetting bridge
   projections and only scanning host-local queued jobs, which makes external
   `loop.sh`-style supervision an operational fallback instead of a structural
@@ -2022,5 +2022,5 @@ should not own mission state.
 ## Related Documents
 
 - Formal runtime backlog: `docs/todo/mission-control.md`
-- CodexBridge integration and migration notes:
+- wxBridage integration and migration notes:
   [`mission-control-codexbridge-integration.md`](./mission-control-codexbridge-integration.md)

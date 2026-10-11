@@ -1,4 +1,4 @@
-# CodexBridge Web UI Happy Alignment Spec
+# wxBridage Web UI Happy Alignment Spec
 
 ## Goal
 
@@ -32,7 +32,7 @@ Key Happy references used for this spec:
 - [reference/happy/packages/happy-app/sources/components/SidebarView.tsx](/home/ubuntu/dev/CodexBridge/reference/happy/packages/happy-app/sources/components/SidebarView.tsx)
 - [reference/happy/docs/layout-core.md](/home/ubuntu/dev/CodexBridge/reference/happy/docs/layout-core.md)
 
-## Current CodexBridge Web State
+## Current wxBridage Web State
 
 Current files that own the web chat experience:
 

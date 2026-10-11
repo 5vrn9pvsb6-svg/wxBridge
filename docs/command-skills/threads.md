@@ -1,8 +1,8 @@
-# CodexBridge Command Skill: thread search and batch thread actions
+# wxBridage Command Skill: thread search and batch thread actions
 
 ## Purpose
 
-This file defines how Codex should normalize natural-language CodexBridge thread commands when Bridge explicitly asks Codex to use this project-local command skill.
+This file defines how Codex should normalize natural-language wxBridage thread commands when Bridge explicitly asks Codex to use this project-local command skill.
 
 Bridge uses this skill for:
 

@@ -19,7 +19,7 @@ export class InMemoryBridgeSessionRepository implements BridgeSessionRepository 
 
   getByProviderThread(providerProfileId: string, codexThreadId: string): BridgeSession | null {
     return this.list().find((session) =>
-      session.providerProfileId === providerProfileId && session.codexThreadId === codexThreadId,
+      session.providerProfileId === providerProfileId && session.codexThreadId === codexThreadId && !session.desktopTarget,
     ) ?? null;
   }
 

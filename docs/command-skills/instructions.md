@@ -1,8 +1,8 @@
-# CodexBridge Command Skill: /instructions
+# wxBridage Command Skill: /instructions
 
 ## Purpose
 
-This file defines how Codex should understand and normalize natural-language CodexBridge `/instructions` requests when Bridge explicitly asks Codex to use this project-local command skill.
+This file defines how Codex should understand and normalize natural-language wxBridage `/instructions` requests when Bridge explicitly asks Codex to use this project-local command skill.
 
 `/instructions` manages the active Codex profile `AGENTS.md`. Codex may interpret user intent and return a structured proposal, but Bridge is the only component allowed to write, clear, confirm, cancel, or persist instruction changes.
 
@@ -177,7 +177,7 @@ If invoked for one of these by mistake:
 Codex must not:
 
 - Write, clear, confirm, cancel, or persist `AGENTS.md` directly.
-- Send messages directly or bypass CodexBridge delivery.
+- Send messages directly or bypass wxBridage delivery.
 - Pretend confirmation has already happened.
 - Invent unseen current instructions or pending drafts.
 - Turn unrelated code-editing, assistant-record, reminder, or automation requests into `AGENTS.md` edits.

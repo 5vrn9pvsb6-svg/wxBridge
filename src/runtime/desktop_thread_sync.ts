@@ -5,6 +5,7 @@ export interface DesktopSharedThreadTarget {
   threadId: string;
   bridgeSessionId: string;
   providerProfileId: string;
+  desktopTargetKey?: string | null;
 }
 
 export interface DesktopThreadSyncCoordinator {
@@ -49,7 +50,7 @@ export class DesktopThreadSync {
   reconcile(event: InboundTextEvent, start = true): void {
     if (this.stopped) { return; }
     const target = this.options.coordinator.resolveDesktopSharedThread?.(event);
-    const key = target ? `${target.providerProfileId}:${target.bridgeSessionId}:${target.threadId}` : '';
+    const key = target ? desktopThreadBindingKey(target) : '';
     const previous = this.subscriptions.get(event.externalScopeId);
     if (previous?.key === key) { return; }
     if (previous) { this.cancel(event.externalScopeId, previous); }
@@ -98,7 +99,7 @@ export class DesktopThreadSync {
       onEvent: async (update) => {
         if (signal.aborted) { return; }
         const current = this.options.coordinator.resolveDesktopSharedThread?.(event);
-        if (!current || `${current.providerProfileId}:${current.bridgeSessionId}:${current.threadId}` !== subscription.key) {
+        if (!current || desktopThreadBindingKey(current) !== subscription.key) {
           this.cancel(event.externalScopeId, subscription);
           return;
         }
@@ -130,4 +131,9 @@ export class DesktopThreadSync {
       },
     });
   }
+}
+
+export function desktopThreadBindingKey(target: DesktopSharedThreadTarget): string {
+  const legacy = [target.providerProfileId, target.bridgeSessionId, target.threadId].join(':');
+  return target.desktopTargetKey ? target.desktopTargetKey + ':' + legacy : legacy;
 }

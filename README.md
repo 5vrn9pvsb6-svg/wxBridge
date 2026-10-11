@@ -1,29 +1,64 @@
-# CodexBridge
+# wxBridage
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-CodexBridge is a Codex-centered gateway for connecting multiple chat platforms to one shared Codex engine, while switching backend provider profiles inside Codex when needed.
+Continue your existing Codex and Claude Code sessions from WeChat.
 
-Original upstream repository: [Gan-Xing/CodexBridge](https://github.com/Gan-Xing/CodexBridge). This version is based on that project and includes additional changes.
+wxBridage's core feature is desktop session sharing: connect WeChat to an existing session on your computer and continue with the same conversation, context and workspace. Messages sent from WeChat appear in that session, and visible output from tasks started on the computer is synchronized back to WeChat.
 
-## Current Direction
+Original upstream repository: [Gan-Xing/CodexBridge](https://github.com/Gan-Xing/CodexBridge). wxBridage is based on that project and extends it with Codex and Claude Code session sharing.
 
-- First delivery target: `WeChat + Codex`
-- Package-side experiments are paused for now
-- `packages/codex-gateway` is not under active development
-- `packages/mission-control` is not under active development
-- `packages/codex-native-api` is retained as the only package planned for possible future work, but it is also paused for now
-- Core rule: platforms are adapters, Codex stays the execution engine, and Codex thread state stays the source of truth
+## Core Features
+
+- **Share an existing session:** continue a Codex desktop thread or a Claude Code session from WeChat, retaining its history and workspace.
+- **Choose when to share:** browse ten sessions per page and explicitly enter the one you want. Listing sessions does not change the current binding.
+- **Follow work from your phone:** receive visible progress, the final result, and a separate completion/elapsed-time notice for shared turns, including work started on the computer.
+- **Return to your own WeChat conversation:** `/exit` restores the independent session used before sharing; the original computer session and its running task remain available.
+- **Resume output delivery:** persisted acknowledgements skip already delivered shared output after a bridge restart or reconnect.
+
+## Supported Shared Sessions
+
+| Engine | Session shared with WeChat | Connection |
+| --- | --- | --- |
+| Codex | An existing thread owned by the Codex desktop app | Local desktop IPC; the desktop app remains running. Windows/WSL2 adapters are implemented, with real platform acceptance still pending. |
+| Claude (Claude Code) | An existing interactive Claude Code CLI session on the computer | A local MCP Channel, enabled once in the selected session. The launcher resumes the original session ID. |
+
+Claude support here means **Claude Code sessions**. Ordinary Claude Desktop app conversations are outside this adapter.
+
+## Start Sharing from WeChat
+
+After connecting WeChat and enabling the appropriate adapter:
+
+| Command | Action |
+| --- | --- |
+| `/enter` | List shareable sessions for the current provider, ten per page. |
+| `/enter codex` | Browse Codex desktop sessions. |
+| `/enter claude` | Browse Claude Code sessions. |
+| `/enter 2` | Enter the second session on the displayed page. Subsequent messages go to that session. |
+| `/next` / `/prev` | Browse the next or previous page. |
+| `/status` | Check the selected provider/session and whether the chat is shared or independent. |
+| `/exit` | Leave sharing and restore the previous independent WeChat session. |
+
+Setup: [Codex desktop sharing](#codex-desktop-sharing) · [Claude Code sharing](#claude-code-session-sharing) · [Windows/WSL2 configuration](#windows-wsl2-desktop-sharing).
+
+## Product Focus
+
+- Make shared **WeChat + Codex / Claude Code** sessions reliable and easy to enter, follow and leave.
+- Keep each selected session's existing owner, context, workspace and permissions authoritative.
+- Provide independent WeChat conversations alongside explicit session sharing.
 
 ## Documents
 
 - [Core architecture](./docs/architecture/codexbridge-core-architecture.md)
+- [macOS, Windows and Linux host adapters](./docs/architecture/host-platform-adapters.md)
 - [Roadmap TODO](./docs/todo/roadmap.md)
 - [Codex Native API TODO](./docs/todo/codex-native-api.md)
 - [Codex Gateway TODO - paused](./docs/todo/codex-gateway.md)
 - [Mission Control TODO - paused](./docs/todo/mission-control.md)
 - [Mission Control architecture - historical reference](./docs/architecture/mission-control.md)
 - [WeChat slash command reference](./docs/usage/weixin-slash-commands.md)
+- [Claude Code shared-session design](./docs/design/claude-shared-sessions.md)
+- [Windows/WSL2 sharing and verification record](./docs/design/windows-wsl-sharing-architecture.md)
 
 ## Repository Layout
 
@@ -43,18 +78,20 @@ docs/
 
 Project bootstrap is now focused on:
 
-1. Keeping `WeChat + Codex` as the product center
-2. Avoiding more backend/package expansion until the bridge direction is clearer
+1. Making shared desktop sessions with `WeChat + Codex / Claude Code` the product center
+2. Prioritizing session continuity and output delivery before further backend/package expansion
 3. Treating `codex-gateway` and `mission-control` as paused workstreams
 4. Keeping `codex-native-api` only as a retained future option, not as active work
 
 Current implemented bridge pieces:
 
+- Codex desktop sharing and Claude Code session sharing through the same `/enter`, `/status` and `/exit` workflow
+- Observation of running shared turns, visible-output synchronization, completion/duration notices and persisted delivery acknowledgements
 - Core session routing with WeChat-friendly slash commands, including `/helps`, `/status`, `/usage`, `/login`, `/stop`, `/review`, `/plan`, `/skills`, `/plugins`, `/automation`, `/weibo`, `/new`, `/uploads`, `/as`, `/log`, `/todo`, `/remind`, `/note`, `/provider`, `/models`, `/model`, `/personality`, `/instructions`, `/fast`, `/threads`, `/search`, `/next`, `/prev`, `/open`, `/enter`, `/exit`, `/peek`, `/rename`, `/permissions`, `/allow`, `/deny`, `/reconnect`, `/retry`, `/restart`, and `/lang`
 - `/open` now rebinds the current scope and immediately returns a short recent-turn preview, so users can resume an old thread with one command instead of calling `/peek` first
 - File-backed JSON repositories for persistent bridge state
 - WeChat platform skeleton for Hermes-compatible iLink config loading, QR account state reuse, inbound DM normalization, long-poll client/poller wiring, context-token persistence, text chunking, and outbound text/typing delivery
-- Codex profile loader and initial Codex app-server client/plugin path for shared thread execution
+- Codex profile loader and app-server client/plugin path for independent Codex conversations
 - WeChat runtime wiring that feeds poll events into the shared bridge coordinator and sends responses back through the WeChat transport
 - OpenAI-compatible Responses adapter for non-OpenAI Chat Completions providers, including compact fallback, SSE stream translation, tool-call repair, provider/model capability rules, and gated live-provider smoke tests
 
@@ -118,7 +155,7 @@ Recommended entrypoints:
 /auto list
 /auto rename 1 晚间部署巡检
 /auto del 1
-/as 今天修复了 /pg search 日记召回太宽的问题 #CodexBridge
+/as 今天修复了 /pg search 日记召回太宽的问题 #wxBridage
 /as 明天上午10点提醒我给王总回电话
 /as ok
 /as edit 把王总改成李总，时间改成明天上午11点
@@ -219,7 +256,7 @@ Personal assistant records for WeChat. `/as` is the natural-language entry for l
 Examples:
 
 ```text
-/as 今天修复了 /pg search 日记召回太宽的问题 #CodexBridge
+/as 今天修复了 /pg search 日记召回太宽的问题 #wxBridage
 /as 明天上午10点提醒我给王总回电话
 /as ok
 /as 给王总回电话这件事已经完成了
@@ -259,11 +296,11 @@ Examples:
 
 OpenAI-compatible runtime adapter:
 
-- CodexBridge can expose non-OpenAI providers through a local Responses adapter while Codex app-server still talks to a Responses-shaped endpoint.
+- wxBridage can expose non-OpenAI providers through a local Responses adapter while Codex app-server still talks to a Responses-shaped endpoint.
 - The adapter now handles `/responses/compact`, Chat Completions conversion, stream error mapping, CLIProxyAPI top-level stream error chunks, stream read failure framing, configured transient upstream retry, usage fallback including Gemini-family `usageMetadata`, provider/model thinking policy, CLIProxyAPI-style payload compatibility (`default`, `default-raw`/`defaultRaw`, `override`, `override-raw`/`overrideRaw`, `filter`, `root`, protocol/model matching), multimodal input capability flags, and model capability metadata.
 - DeepSeek, MiniMax, Qwen, OpenRouter, Kimi, Gemini, and iFlow are loaded as `providerKind: openai-compatible`; they differ by env vars and capability presets only, not separate provider plugin classes.
 - The model capability catalog follows the same direction as CLIProxyAPI: model quirks are represented as data (`thinking`, `payload`, tool support, multimodal support, token caps), while the executor stays generic.
-- Current built-in catalog covers the CLIProxyAPI model families used by Codex-style routing: Codex, DeepSeek, MiniMax, Qwen, iFlow, Kimi, OpenRouter, Gemini/AI Studio/Vertex, Claude, and Antigravity. `*_MODEL_CATALOG_PATH` can also point at a CLIProxyAPI `models.json`-shaped catalog object; CodexBridge flattens it and merges model token/thinking metadata into runtime capabilities. Native auth/header systems from CLIProxyAPI are not copied into this adapter; use provider env vars or the custom `CODEX_COMPAT_*` profile for deployment-specific credentials.
+- Current built-in catalog covers the CLIProxyAPI model families used by Codex-style routing: Codex, DeepSeek, MiniMax, Qwen, iFlow, Kimi, OpenRouter, Gemini/AI Studio/Vertex, Claude, and Antigravity. `*_MODEL_CATALOG_PATH` can also point at a CLIProxyAPI `models.json`-shaped catalog object; wxBridage flattens it and merges model token/thinking metadata into runtime capabilities. Native auth/header systems from CLIProxyAPI are not copied into this adapter; use provider env vars or the custom `CODEX_COMPAT_*` profile for deployment-specific credentials.
 - Auth pools, proxy rotation, and custom provider header management remain deployment-layer concerns and are intentionally separate from the generic OpenAI-compatible adapter.
 
 Runtime provider examples:
@@ -363,13 +400,16 @@ Keep `test:live-agent` separate from the main suite. It is for deliberate provid
 
 ## Deployment Quick Start
 
-CodexBridge is currently distributed as a source repository. The root package intentionally remains `private`, so install dependencies from a clone rather than attempting to publish or install it as an npm package.
+wxBridage is currently distributed as a source repository. The root package intentionally remains `private`, so install dependencies from a clone rather than attempting to publish or install it as an npm package.
+
+Configuration examples retain the existing `CODEXBRIDGE_*` environment variables and `.codexbridge` state directory; use those identifiers as shown.
 
 ### Common Prerequisites
 
 - Node.js `>= 24`
 - `npm`
-- A working Codex CLI login on the host
+- A working Codex CLI login for Codex features
+- For Claude sharing, an installed and authorized Claude Code CLI with the selected session's Channel enabled
 
 Recommended first check after cloning:
 
@@ -387,7 +427,7 @@ npm install -g @openai/codex@latest --include=optional
 codex --version
 ```
 
-If `codex --version` still fails, fix that before attempting `weixin:login` or `weixin:serve`.
+For the Codex setup path, fix a failing `codex --version` before continuing with the commands below. Claude Code's session/channel setup is described in its sharing section.
 
 ### Linux
 
@@ -511,7 +551,9 @@ WEIXIN_ALLOWED_USERS=wxid_owner
 
 To discover the sender ID during initial setup, temporarily enable `CODEXBRIDGE_DEBUG_WEIXIN=1`, send one message, and read the `scope_not_allowed` `scopeId` from the service log. Add that value to `WEIXIN_ALLOWED_USERS`, then turn debug logging off and restart the service. `WEIXIN_DM_POLICY=open` remains available as an explicit opt-in for deployments whose account exposure is otherwise controlled. The legacy value `pairing` is not supported and fails closed as `allowlist`.
 
-### Share a Codex desktop thread on macOS
+<a id="codex-desktop-sharing"></a>
+
+### Share a Codex desktop thread
 
 An existing WeChat chat can explicitly enter a Codex desktop thread and send text through the desktop app instead of opening a second writer for the same thread. Enable the opt-in relay in the service environment file:
 
@@ -523,7 +565,7 @@ Restart `weixin:serve`, then use `/enter` in WeChat to list 10 available threads
 
 This background path allows messages while the Mac's screen is locked, provided the desktop app and bridge remain running and the Mac stays awake and online. It does not unlock the computer or change power settings. Tasks that require interacting with an unlocked desktop can still be blocked. If the thread has no desktop owner, open it in the desktop app once before retrying. The adapter uses an internal, versioned desktop coordination protocol; a desktop update can require a bridge compatibility update. Missing owners and incompatible protocols fail explicitly, without starting a separate writer or automatically switching to GUI submission. A timeout/disconnect after submission can mean the message was accepted: check the thread before resending.
 
-Send `/exit` to leave the desktop thread. CodexBridge keeps that desktop thread untouched and restores the standalone thread that was bound before `/enter`; it creates a new standalone thread only when the previous one is unavailable. `/exit` also works while a shared reply is running: the submitted reply continues in the original desktop thread, and new conversation messages wait for it to finish before using the standalone thread. `/status` reports either `desktop shared` or `standalone`.
+Send `/exit` to leave the desktop thread. wxBridage keeps that desktop thread untouched and restores the standalone thread that was bound before `/enter`; it creates a new standalone thread only when the previous one is unavailable. `/exit` also works while a shared reply is running: the submitted reply continues in the original desktop thread, and new conversation messages wait for it to finish before using the standalone thread. `/status` reports either `desktop shared` or `standalone`.
 
 Entering an already running desktop thread attaches a read-only output observer. Visible assistant messages from its unfinished turn and subsequent desktop-started turns are forwarded to WeChat in throttled segments, followed by the final result with duplicate text suppressed. Completed history, reasoning, and tool logs are excluded. The observer stops on `/exit`, binding changes, or service shutdown, and resumes for persisted shared bindings after restart. A busy desktop thread does not receive a second prompt from WeChat. Output appears when desktop message segments reach the rollout log; this is not token-by-token streaming. A message already being sent when you exit may still arrive.
 
@@ -542,22 +584,69 @@ WeChat quick reference:
 
 Current limits:
 
-- macOS and the ChatGPT/Codex desktop app only;
+- macOS desktop sharing, plus Windows/WSL2 adapters described below (Windows/WSL end-to-end acceptance is still pending);
 - the desktop app must remain running and own the selected thread;
 - the Mac must remain logged in, awake and online; screen locking is allowed with IPC, while sleep/logout are not supported for immediate processing;
 - desktop coordination protocol compatibility is required (owner discovery v1 and follower start-turn v2 in the inspected desktop build);
 - plain text and voice messages with a WeChat transcript are supported; images, files, videos, and untranscribed voice fail explicitly instead of falling back to a second writer;
-- `/stop` and WeChat-side approval handling do not control a desktop-owned turn yet.
+- `/stop`, `/retry`, `/review`, `/compact`, `/goal`, and WeChat-side approval handling do not control a desktop-owned turn yet; use the desktop for those operations.
 
 `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=ipc` is the default. `CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET` optionally selects an absolute socket path; otherwise the adapter uses `$CODEX_HOME/ipc/ipc.sock` (or `~/.codex/ipc/ipc.sock`). The socket and its directory must be owned by the current user and not writable by other users.
 
 For older desktop versions, explicitly set `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=gui` to use the previous deep-link/Return-key method. That compatibility mode requires macOS Accessibility permission and an unlocked desktop. It is never selected automatically on IPC failure. Optional GUI tuning values are `CODEXBRIDGE_CODEX_DESKTOP_APP_NAME` and `CODEXBRIDGE_CODEX_DESKTOP_SUBMIT_DELAY_MS`; both transports retain `CODEXBRIDGE_CODEX_DESKTOP_POLL_INTERVAL_MS`, `CODEXBRIDGE_CODEX_DESKTOP_TIMEOUT_MS`, and `CODEXBRIDGE_CODEX_DESKTOP_MAX_PROMPT_CHARS` (IPC currently accepts up to 16,000 characters).
 
+<a id="windows-wsl2-desktop-sharing"></a>
+
+### Windows and WSL2 desktop sharing
+
+Version 0.1.17 adds a local Windows named-pipe adapter, also reachable from WSL2 through a packaged PowerShell helper. The Windows Codex desktop app must be running as the same Windows user and own the selected thread. Ordinary CLI sessions without a desktop owner cannot be attached transparently. This adapter has simulated transport/routing tests; real Windows/WSL desktop and lock-screen round trips still need platform acceptance.
+
+For a native Windows bridge, set these values in PowerShell before starting the bridge, or put the equivalent `KEY=value` entries in the service environment file:
+
+~~~powershell
+$env:CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD = "1"
+$env:CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT = "ipc"
+$env:CODEXBRIDGE_CODEX_DESKTOP_HOME = "$env:USERPROFILE\.codex"
+$env:CODEXBRIDGE_CODEX_DESKTOP_HOST_ID = "local"
+npm run weixin:serve
+~~~
+
+For a bridge running in WSL2 that shares a **Windows-local** desktop thread:
+
+~~~bash
+export CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD=1
+export CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=ipc
+export CODEXBRIDGE_CODEX_DESKTOP_HOME='/mnt/c/Users/Alice/.codex'
+export CODEXBRIDGE_CODEX_DESKTOP_HOST_ID=local
+npm run weixin:serve
+~~~
+
+Replace Alice with the actual Windows account and mount path. For a **desktop-owned WSL agent**, instead select its actual Codex home and exact distribution host, for example:
+
+~~~bash
+export CODEXBRIDGE_CODEX_DESKTOP_HOME='/home/alice/.codex'
+export CODEXBRIDGE_CODEX_DESKTOP_HOST_ID='remote-wsl:Ubuntu'
+~~~
+
+Distribution names are case-sensitive here and URI-encoded: `Ubuntu Work` becomes `remote-wsl:Ubuntu%20Work`. The home must be readable from the bridge's own distribution and match the selected agent. Windows and WSL have separate default homes; the bridge requires explicit desktop-home configuration under WSL and leaves independent-session `CODEX_HOME` and authentication untouched.
+
+The transport uses only `\\.\pipe\codex-ipc`, or a local pipe selected with `CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET`. It starts no TCP listener. The helper verifies the pipe server's Windows user SID before sending desktop bytes. Windows PowerShell 5.1/.NET, permission to run the reviewed local helper script, and enabled WSL interoperability are prerequisites. The helper does not change execution policy or elevate. If policy blocks it, inspect `Get-ExecutionPolicy -List` and use your organization's approved policy. `CODEXBRIDGE_CODEX_DESKTOP_POWERSHELL_BIN` may explicitly select an absolute system PowerShell executable; for nonstandard Windows mounts, configure its WSL-visible absolute path. No separate Windows Node installation is needed by a WSL bridge.
+
+After starting/restarting your configured bridge, send `/enter` in WeChat, select with `/enter 2`, and check `/status` for the desktop host. Each bridge selects one home/host. Changing that target invalidates old selections and requires `/enter` again. Desktop browsing is read-only: `/peek`, `/search`, `/next` and `/prev` operate on that catalog; manage/archive/rename desktop threads in the desktop app. `/threads` returns to the independent catalog. `/exit` restores the previous independent conversation even if the shared endpoint becomes unavailable.
+
+Both shared modes retain visible-output synchronization, duplicate suppression, and the separate completion/duration notice described above. IPC can work while the screen is locked if the computer and required processes stay awake, logged in, and online; WSL shutdown stops its bridge. A systemd service alone does not keep a WSL instance alive. GUI submission remains macOS-only.
+
+If no compatible owner is found, open the chosen conversation in the Windows desktop app and verify the host/home pair. `owner-mismatch` or `owner-query-failed` means pipe ownership could not be verified; run both applications under the same Windows account rather than bypassing the check. Protocol mismatches require a compatibility update. Missing acknowledgements after dispatch are reported as possibly submitted and are never automatically retried. File inventory and rollout reads are bounded; an incomplete catalog is labeled.
+
+See the [confirmed architecture and verification record](docs/design/windows-wsl-sharing-architecture.md) for routing versions and platform-verification limits. Before downgrading to an older bridge, use `/exit` to detach new desktop-only bindings.
+
+<a id="claude-code-session-sharing"></a>
+
 ### Share an existing Claude Code session
 
 The WeChat service also registers a `claude-code` sharing provider. Send `/enter claude` to browse local Claude Code sessions (10 per page), then `/enter <index>` to enter one. Listing sessions does not change the chat's current provider or binding. `/enter codex` returns to the Codex session list. `/status` identifies the bound provider and sharing mode; `/exit` restores the independent WeChat session that preceded sharing, including when it used Codex.
 
-First enable the channel in the selected **interactive Claude Code CLI session**. Run this from the CodexBridge installation directory:
+First enable the channel in the selected **interactive Claude Code CLI session**. Run this from the wxBridage installation directory:
 
 ```bash
 node --import tsx src/cli.ts claude share <existing-Claude-session-UUID>

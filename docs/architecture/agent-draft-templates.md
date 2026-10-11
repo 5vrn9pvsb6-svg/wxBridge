@@ -1,7 +1,7 @@
 # Agent Draft Templates
 
 This document defines the first-host `/agent` draft template strategy for
-CodexBridge. It is a host-level intake contract, not a package-level Mission
+wxBridage. It is a host-level intake contract, not a package-level Mission
 Control runtime contract.
 
 Use this document as the reviewable source of truth for:
@@ -20,7 +20,7 @@ checklist-first missions instead of generic lifecycle plans.
 
 ## Scope
 
-This document applies to first-host Mission draft intake in CodexBridge:
+This document applies to first-host Mission draft intake in wxBridage:
 
 - `/agent add <natural language>`
 - bare `/agent <natural language>` when it resolves to new-task creation

@@ -136,7 +136,7 @@ The next phase should keep moving heavy or unsafe tools behind explicit executor
 - No external vector DB adapter implementation.
 - No sqlite driver dependency.
 - No Qdrant, LanceDB, pgvector, sqlite-vec dependency.
-- No CodexBridge/CodexNext session or UI logic.
+- No wxBridage/CodexNext session or UI logic.
 - No shell/computer/code execution default.
 - No package publishing switch; `private: true` stays until package readiness is complete.
 

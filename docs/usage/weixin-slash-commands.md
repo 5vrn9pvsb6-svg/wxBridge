@@ -1,6 +1,12 @@
-# Weixin Slash Commands
+# wxBridage WeChat Slash Commands
 
-This document describes the current text-first slash command surface for the WeChat bridge.
+wxBridage lets WeChat share an existing Codex desktop or Claude Code session on your computer. Choose a session with `/enter`, continue the same conversation, follow its visible output and completion/duration notices, then use `/exit` to restore your independent WeChat chat.
+
+Use `/enter codex` to browse Codex desktop threads or `/enter claude` for Claude Code sessions, then `/enter <index>` to select one. Lists contain ten sessions per page. Claude sharing uses an enabled MCP Channel in an interactive Claude Code CLI session; ordinary Claude Desktop conversations are outside this adapter.
+
+Setup: [Codex sharing](../../README.md#codex-desktop-sharing), [Claude Code sharing](../../README.md#claude-code-session-sharing), [Windows/WSL2](../../README.md#windows-wsl2-desktop-sharing). [中文说明](../../README.zh-CN.md).
+
+This document describes the remaining text-first slash command surface as well as session sharing.
 
 ## Locale
 
@@ -37,6 +43,12 @@ It borrows the most useful CLI help conventions while staying chat-friendly:
 ## Fast Start
 
 ```text
+/enter
+/enter codex
+/enter claude
+/enter 2
+/status
+/exit
 /helps
 /h
 / 
@@ -62,7 +74,7 @@ It borrows the most useful CLI help conventions while staying chat-friendly:
 /auto list
 /auto rename 1 晚间部署巡检
 /auto del 1
-/as 今天修复了 /pg search 日记召回太宽的问题 #CodexBridge
+/as 今天修复了 /pg search 日记召回太宽的问题 #wxBridage
 /as 明天上午10点提醒我给王总回电话
 /as ok
 /as 给王总回电话这件事已经完成了
@@ -238,7 +250,7 @@ Save personal assistant records from WeChat.
 Examples:
 
 ```text
-/as 今天修复了 /pg search 日记召回太宽的问题 #CodexBridge
+/as 今天修复了 /pg search 日记召回太宽的问题 #wxBridage
 /as 明天上午10点提醒我给王总回电话
 /as ok
 /as edit 把王总改成李总，时间改成明天上午11点
@@ -249,7 +261,7 @@ Examples:
 /as edit 备注：还差医药发票不确定
 /as ok
 /log 今天测试微信桥接，发现插件搜索需要更高相关度
-/todo 下周五前整理 CodexBridge 视频脚本 p1
+/todo 下周五前整理 wxBridage 视频脚本 p1
 /todo done 1
 /remind 每周一早上9点提醒我看项目进度
 /note Notion 适合结构化日志，Google Drive 适合导出归档
@@ -326,7 +338,7 @@ Notes:
 
 - this command follows the official Codex CLI semantics: it changes the global Codex feature config, not just the current session
 - new sessions inherit the new setting automatically
-- CodexBridge resets local Codex clients after a change, so the next reply uses the new configuration
+- wxBridage resets local Codex clients after a change, so the next reply uses the new configuration
 - removed and deprecated features are hidden by default
 
 ### `/goal`
@@ -343,7 +355,7 @@ Examples:
 
 ```text
 /goal
-/goal 持续把 CodexBridge 的微信体验打磨到更稳定
+/goal 持续把 wxBridage 的微信体验打磨到更稳定
 /goal pause
 /goal resume
 /goal clear
@@ -452,7 +464,7 @@ Examples:
 
 ```text
 /new
-/new /home/ubuntu/dev/CodexBridge
+/new /home/ubuntu/dev/wxBridage
 /n
 ```
 
@@ -662,7 +674,7 @@ Examples:
 
 Bind the current WeChat scope to an existing Codex thread.
 On WeChat, numeric indexes are the preferred way to open a thread.
-After rebinding, CodexBridge also returns a short recent-turn preview from that thread,
+After rebinding, wxBridage also returns a short recent-turn preview from that thread,
 so in many cases you can reopen a thread directly without calling `/peek` first.
 
 Examples:
@@ -691,9 +703,10 @@ Desktop sharing is explicit and scoped to the current WeChat chat.
 - `/enter` lists 10 available threads per page and explains how to select one. Use `/next` and `/prev` to move between pages.
 - `/enter claude` lists local Claude Code sessions without switching the current chat. Select one with `/enter <index>` after enabling its channel on the PC using `node --import tsx src/cli.ts claude share <session UUID>` from the installation directory. Confirm Claude's channel prompt in the terminal once. The launcher resumes the original ID; it never forks. A session already running without channel support needs to be reopened with the launcher first; ordinary Claude Desktop chat sessions are outside this adapter. `/enter codex` browses Codex again.
 - Claude shared messages use its running CLI's MCP channel, and its normal transcript supplies visible output, completion and duration. `/stop` requests interruption of the current Claude turn; local tool approvals still need attention on the computer. `/exit` restores the independent WeChat chat and leaves Claude running. This Claude adapter only executes in shared mode; it does not start independent Claude CLI writers through `/open` or `/provider`.
-- `/enter <index|threadId>` enters that desktop thread. Subsequent plain-text messages and voice messages with a WeChat transcript are submitted through the Codex desktop app and become visible in the same PC thread.
-- The default IPC transport submits to the existing desktop owner in the background, including while the screen is locked. Keep the desktop app running and the Mac awake and online. Open the selected thread in the desktop once if its owner is unavailable. IPC errors never silently switch to an independent writer or GUI submission; after an ambiguous acknowledgement, check the thread before resending. Explicit `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=gui` selects the older unlocked-desktop compatibility method.
-- `/exit` leaves desktop sharing without closing or modifying the desktop thread. CodexBridge restores the standalone thread used before `/enter`, creating a new one only if the previous thread is unavailable. It can run while a shared reply is active; that reply continues in the original desktop thread, and new conversation messages wait until it finishes.
+- `/enter <index|threadId>` enters the selected session. Subsequent plain-text messages and voice messages with a WeChat transcript reach its existing owner: desktop IPC for Codex, or the enabled MCP Channel for Claude Code. They belong to the same session on the computer.
+- For Codex, the default IPC transport submits to the existing desktop owner in the background, including while the screen is locked. Keep the desktop app running and the computer awake and online. Windows/WSL2 adapters are implemented but real platform acceptance remains pending; see the setup link above. Open the selected thread in the desktop once if its owner is unavailable. IPC errors never silently switch to an independent writer or GUI submission; after an ambiguous acknowledgement, check the thread before resending. Explicit `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=gui` selects the older macOS-only unlocked-desktop compatibility method.
+- Codex desktop sharing does not support WeChat `/stop`, `/retry`, `/review`, `/compact` or `/goal`; use the desktop for these operations. Claude Code's tracked `/stop` behavior is described above.
+- `/exit` leaves desktop sharing without closing or modifying the desktop thread. wxBridage restores the standalone thread used before `/enter`, creating a new one only if the previous thread is unavailable. It can run while a shared reply is active; that reply continues in the original desktop thread, and new conversation messages wait until it finishes.
 - `/open` remains a normal bridge binding and does not enable desktop sharing.
 - `/status` shows whether the current chat is in `desktop shared` or `standalone` mode.
 - Entering a running desktop thread synchronizes its current visible assistant output and future desktop-started replies to WeChat. Completed history, reasoning, and tool logs are excluded. Complete rollout message segments are sent intact, splitting only for WeChat's delivery size limit; the existing delivery queue throttles sends (3 seconds by default). Version numbers and IP addresses are not treated as sentence boundaries. Final delivery suppresses duplicate text. The rollout records message segments, so token-by-token updates are not guaranteed.
@@ -734,7 +747,7 @@ Examples:
 ```text
 /rename 2 微信桥接排障
 /rn 2 微信桥接排障
-/rename 019d95ad-7166-7ee3-89a3-3bbb50e0fd64 CodexBridge
+/rename 019d95ad-7166-7ee3-89a3-3bbb50e0fd64 wxBridage
 ```
 
 ### `/permissions [preset]` and `/perm [preset]`

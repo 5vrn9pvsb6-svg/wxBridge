@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import test, { type TestContext } from 'node:test';
+import nodeTest, { type TestContext } from 'node:test';
+const test = process.platform === 'win32' ? nodeTest.skip : nodeTest;
 import { CodexDesktopIpcClient, DesktopIpcSubmissionError } from '../../../src/providers/codex/desktop_ipc_client.js';
 
 function frame(value: unknown): Buffer {
@@ -76,6 +77,32 @@ test('background submission targets the desktop owner and preserves desktop sett
     assert.equal(setting in submitted.params.turnStart.request, false);
   }
   assert.match(submitted.params.turnStart.request.clientUserMessageId, /^[a-f0-9-]{36}$/u);
+});
+
+test('WSL-backed requests discover the exact host and use routed follower v3 once', async context => {
+  const f = await fixture(context);
+  const client = new CodexDesktopIpcClient({ socketPath: f.socketPath, hostId: 'remote-wsl:Ubuntu%20Work' });
+  await client.submitTurn('thread-1', '中文');
+  const discovery = f.messages.find(message => message.method === 'thread-owner-discovery');
+  const submits = f.messages.filter(message => message.method === 'thread-follower-start-turn');
+  assert.equal(discovery.params.hostId, 'remote-wsl:Ubuntu%20Work');
+  assert.equal(discovery.version, 1);
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].hostId, discovery.params.hostId);
+  assert.equal(submits[0].version, 3);
+  assert.equal(submits[0].targetClientId, 'desktop-owner');
+});
+
+test('aborting after dispatch reports an uncertain result without resubmission', async context => {
+  const controller = new AbortController();
+  const f = await fixture(context, message => {
+    if (message.method !== 'thread-follower-start-turn') { return false; }
+    controller.abort();
+    return true;
+  });
+  await assert.rejects(f.client.submitTurn('thread-1', 'hello', controller.signal),
+    error => error instanceof DesktopIpcSubmissionError && error.outcomeUnknown);
+  assert.equal(f.messages.filter(message => message.method === 'thread-follower-start-turn').length, 1);
 });
 
 test('owner probe is read-only and rejects follower discovery instead of claiming ownership', async (context) => {

@@ -9,6 +9,7 @@ export interface PlatformBinding {
   bridgeSessionId: string;
   executionMode?: PlatformExecutionMode;
   standaloneBridgeSessionId?: string | null;
+  desktopTarget?: import('./core.js').DesktopTargetIdentity | null;
   updatedAt: number;
 }
 

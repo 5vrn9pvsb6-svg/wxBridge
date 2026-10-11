@@ -22,7 +22,7 @@ It is the execution-oriented companion to:
 Codex Native API should expose the already logged-in local Codex app-server as a
 localhost-callable API surface.
 
-Its first product purpose is **not** to replace the main CodexBridge chat flow.
+Its first product purpose is **not** to replace the main wxBridage chat flow.
 Its main purpose is to provide an isolated execution surface for:
 
 - classification
@@ -32,7 +32,7 @@ Its main purpose is to provide an isolated execution surface for:
 - lightweight side reasoning
 - external local clients that need a standard API surface
 
-without polluting the active CodexBridge conversation thread.
+without polluting the active wxBridage conversation thread.
 
 It should own:
 
@@ -76,7 +76,7 @@ Avoid frequent edits here unless the change is truly cross-cutting:
 ## Immutable Workstream Goal
 
 Expose the logged-in local Codex capability as a localhost-callable API so
-CodexBridge can run isolated side tasks without polluting the main Codex thread,
+wxBridage can run isolated side tasks without polluting the main Codex thread,
 while keeping the primary WeChat chat flow unchanged.
 
 In short:
@@ -87,19 +87,19 @@ In short:
 
 Canonical one-sentence goal:
 
-> Codex Native API 的目标是把已登录本地 Codex app-server 的订阅能力封装成 localhost 可调用的标准 API，并优先承接 CodexBridge 的隔离型副任务，同时保持主聊天链路不变。
+> Codex Native API 的目标是把已登录本地 Codex app-server 的订阅能力封装成 localhost 可调用的标准 API，并优先承接 wxBridage 的隔离型副任务，同时保持主聊天链路不变。
 
 Evolution direction:
 
-- first implementation: internal CodexBridge runtime/module
+- first implementation: internal wxBridage runtime/module
 - next: reusable workspace package
 - later if justified: standalone npm package that others can install without
-  depending on full CodexBridge bridge UX
+  depending on full wxBridage bridge UX
 
 ## Current Closure Policy
 
 The current implementation already contains some provider-selectable localhost
-API seams because it reused the existing CodexBridge provider-profile and
+API seams because it reused the existing wxBridage provider-profile and
 provider-plugin infrastructure.
 
 For the current closure phase:
@@ -126,7 +126,7 @@ as an explicit follow-up expansion step after Codex-only closure is done.
   - final fallback: external provider path
 - [x] Lock ownership and non-ownership at the document level
 - [x] Lock the recommended first implementation shape:
-  - start as an internal CodexBridge runtime/module, not a new standalone npm
+  - start as an internal wxBridage runtime/module, not a new standalone npm
     package
 - [x] Lock the API-facade principle:
   - native API should wrap the existing isolated native execution capability,
@@ -190,7 +190,7 @@ while leaving the existing generalized seams frozen in place.
      tasks
      - landed by gating localhost native-api routing to `openai-native`
        provider requests in `src/providers/codex/native_api_side_task_router.ts`
-   - [x] define which internal CodexBridge side-task lanes should prefer the
+   - [x] define which internal wxBridage side-task lanes should prefer the
      Codex-only native API path
      - command-skill parsing
      - review result localization
@@ -282,7 +282,7 @@ Upstream:
 
 ## Design Rules
 
-1. Main CodexBridge chat turns must keep using the current Codex app-server path.
+1. Main wxBridage chat turns must keep using the current Codex app-server path.
 2. Codex Native API is for isolated, side-effect-contained calls first.
 3. Responses-first is the primary API surface.
 4. Chat Completions compatibility is a later compatibility layer, not Phase 1.
@@ -491,7 +491,7 @@ Implementation checklist:
 Reference focus:
 
 - CLIProxyAPI routing/fallback policy
-- current CodexBridge helper-thread execution model
+- current wxBridage helper-thread execution model
 
 Build:
 
@@ -643,7 +643,7 @@ Phase 3 decision:
 
 ## Recommended Implementation Boundary
 
-The first implementation should live inside CodexBridge as a native runtime
+The first implementation should live inside wxBridage as a native runtime
 module close to the existing Codex app-server integration, not as a separate
 package like `codex-gateway`.
 
@@ -693,7 +693,7 @@ Only after:
 
 - API contract is stable
 - continuation behavior is well-tested
-- CodexBridge is no longer the only real consumer
+- wxBridage is no longer the only real consumer
 - the package can stand on its own without bridge-specific UX assumptions
 
 ## Phase Plan
@@ -705,9 +705,9 @@ Only after:
   - side tasks prefer native API
   - external providers are fallback
 - [x] Define native API ownership and non-ownership clearly in docs
-- [x] Decide that the first implementation lives inside CodexBridge runtime
+- [x] Decide that the first implementation lives inside wxBridage runtime
   or behind a dedicated internal package/module boundary
-  - chosen direction: internal CodexBridge runtime/module first, not a new
+  - chosen direction: internal wxBridage runtime/module first, not a new
     package
 
 ### Phase 1: Minimal localhost Responses API
@@ -855,7 +855,7 @@ Only after:
     - bridge command routing
     - WeChat delivery/runtime types
     - provider profile loading helpers that are only meaningful inside the
-      CodexBridge monorepo bootstrap path
+      wxBridage monorepo bootstrap path
 - [x] Ensure localhost server startup can work without requiring WeChat/Telegram
   bridge runtime
   - landed early via `src/providers/codex/native_api_service.ts` plus the

@@ -19,7 +19,7 @@
 - Checklist 已明确：最后 blocker 是 package scope/product name/version/release workflow，以及 live smoke 真实执行记录。
 
 现在进入品牌和包边界迁移阶段。
-目标是让这个包从 CodexBridge 的内部包毕业为独立产品：**CodexProvider**。
+目标是让这个包从 wxBridage 的内部包毕业为独立产品：**CodexProvider**。
 
 ---
 
@@ -60,7 +60,7 @@
 - 不要删除旧 public aliases。
 - 不要马上 `private: false`。
 - 不要发布 npm。
-- 不要把 CodexBridge / CodexNext 的 host state 移入包。
+- 不要把 wxBridage / CodexNext 的 host state 移入包。
 - 不要把 current package 逻辑重写成另一个架构。
 
 ---
@@ -111,7 +111,7 @@ package.json
 - 旧 `CodexGateway*` 名称继续保留 deprecated alias。
 - 本阶段不发布 npm。
 - 本阶段不创建实际外部 vector DB adapter。
-- 本阶段不改 CodexBridge 业务逻辑。
+- 本阶段不改 wxBridage 业务逻辑。
 
 ---
 
@@ -444,8 +444,8 @@ README 开头建议改成：
 `@codex-provider/core` is a provider compatibility SDK for Codex app-server integrations. It lets non-OpenAI models participate in the Codex native tool-call loop by exposing a Responses-compatible surface over provider-specific Chat Completions APIs.
 ```
 
-不要再把 CodexBridge 放在第一段里。
-CodexBridge / CodexNext 只作为 consumers 出现在 examples 或 compatibility docs 中。
+不要再把 wxBridage 放在第一段里。
+wxBridage / CodexNext 只作为 consumers 出现在 examples 或 compatibility docs 中。
 
 ---
 
@@ -497,7 +497,7 @@ scripts/check-codex-provider-relay-boundary.mjs
 
 ## Phase 5：外部 consumer 验证
 
-在发布前必须证明这个包不是 CodexBridge 内部包。
+在发布前必须证明这个包不是 wxBridage 内部包。
 
 二选一：
 
@@ -524,7 +524,7 @@ import {
 
 验证：
 
-- 不 import CodexBridge 内部路径。
+- 不 import wxBridage 内部路径。
 - 可以 start runtime。
 - 可以拿到 `state.codexCliArgs`。
 - 可以注册 `file_search` / `web_search` executor。
@@ -551,7 +551,7 @@ await runtime.stop()
 
 必须证明：
 
-- 不依赖 CodexBridge。
+- 不依赖 wxBridage。
 - 不依赖 WeChat/Telegram/web UI。
 - 不依赖 host session store。
 
@@ -849,7 +849,7 @@ test(provider): add standalone CodexProvider consumer harness
 范围：
 
 - 只通过 root entrypoint import
-- 不依赖 CodexBridge internals
+- 不依赖 wxBridage internals
 - runtime start/stop
 - file_search/web_search executor wiring
 
@@ -923,7 +923,7 @@ package.json
 - 是否会保持 private true
 - 是否不会发布 npm
 - 是否不会引入新依赖
-- 是否不会移动 CodexBridge host state
+- 是否不会移动 wxBridage host state
 - 是否先做 API alias，再做 package metadata
 
 第四步：按 PR 1 开始实现：

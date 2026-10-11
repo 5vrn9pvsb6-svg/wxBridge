@@ -207,12 +207,13 @@ test('WeixinBridgeRuntime keeps periods inside versions and IPs intact, includin
   await runtime.stop();
 });
 
-test('desktop synchronization reuses acknowledgements from a WeChat-submitted desktop turn', async (context) => {
+for (const desktopTargetKey of [null, 'windows-target']) {
+test('desktop synchronization reuses acknowledgements from a WeChat-submitted desktop turn (' + (desktopTargetKey ?? 'legacy') + ')', async (context) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-own-checkpoint-'));
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const desktopSyncCheckpointPath = path.join(directory, 'checkpoint.json');
   const sent: string[] = [];
-  const target = { threadId: 'desktop', bridgeSessionId: 'session', providerProfileId: 'openai-default' };
+  const target = { threadId: 'desktop', bridgeSessionId: 'session', providerProfileId: 'openai-default', desktopTargetKey };
   const first = makeRuntime({ desktopSyncCheckpointPath,
     sendText: async ({ content }) => { sent.push(content); },
     coordinator: {
@@ -252,6 +253,7 @@ test('desktop synchronization reuses acknowledgements from a WeChat-submitted de
   assert.equal(sent.filter((text) => text === '已完成。').length, 1);
   assert.equal(sent.filter((text) => /本轮回复已结束/.test(text)).length, 1);
 });
+}
 
 test('desktop synchronization forwards an already running desktop turn and dedupes its final answer', async (context) => {
   let shared = false;
@@ -403,7 +405,7 @@ test('desktop synchronization still reports completion when final text delivery 
 });
 
 test('desktop own-turn completion notice is suppressed when the binding changes before completion', async () => {
-  for (const leave of [true, false]) {
+  for (const change of ['exit', 'thread', 'host']) {
     let target: any = { threadId: 'desktop', bridgeSessionId: 'session', providerProfileId: 'openai-default' };
     let started: () => void;
     const entered = new Promise<void>((resolve) => { started = resolve; });
@@ -426,7 +428,9 @@ test('desktop own-turn completion notice is suppressed when the binding changes 
     });
     const reply = runtime.processInboundEvent({ platform: 'weixin', externalScopeId: 'wx-desktop', text: 'request' });
     await entered;
-    target = leave ? null : { ...target, threadId: 'different', bridgeSessionId: 'different-session' };
+    target = change === 'exit' ? null : change === 'thread'
+      ? { ...target, threadId: 'different', bridgeSessionId: 'different-session' }
+      : { ...target, desktopTargetKey: 'different-host' };
     finish!();
     await reply;
     assert.ok(!sent.some((text) => /本轮回复已结束/.test(text)));

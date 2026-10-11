@@ -143,19 +143,19 @@ records:
 - boundary metadata: `requestId`, `correlationId`, `idempotencyKey`
 - package-owned query views for summary/workpad, timeline/history, attempts,
   and execution refs/host bindings/artifact refs
-- a direct in-process implementation used by CodexBridge for `/agent`
+- a direct in-process implementation used by wxBridage for `/agent`
   `list/show/stop/retry`
 
 Phase 8b now adds the first explicit host adapter contract beside that API:
 
 - exported `MissionHostAdapter` / `MissionHostContext` boundary types
-- a first CodexBridge host adapter that routes session/thread binding,
+- a first wxBridage host adapter that routes session/thread binding,
   progress, provider approvals, and artifact-publication hooks through that
   package-owned contract
 - `/agent` artifact rendering now prefers package-owned execution artifact refs
   before falling back to legacy `AgentJob` compatibility blobs
 
-Phase 8c now moves CodexBridge onto a package-owned authoritative mission
+Phase 8c now moves wxBridage onto a package-owned authoritative mission
 repository while keeping `AgentJob` as a rebuildable compatibility projection:
 
 - runtime bootstrap now provisions a real Mission Control repository for both
@@ -223,7 +223,7 @@ constraints, not just as vague inspiration:
 
 ## Packaging Direction
 
-The package should start as a package inside the CodexBridge repository:
+The package should start as a package inside the wxBridage repository:
 
 ```text
 packages/mission-control/
@@ -231,12 +231,12 @@ packages/mission-control/
 
 Rules:
 
-- `CodexBridge -> @codexbridge/mission-control`
-- `@codexbridge/mission-control -X-> CodexBridge platform/runtime/command code`
+- `wxBridage -> @codexbridge/mission-control`
+- `@codexbridge/mission-control -X-> wxBridage platform/runtime/command code`
 - No workspace/monorepo conversion is required yet.
 - Follow the same internal-package pattern already used by
   `packages/codex-gateway`.
-- Treat CodexBridge as the first host, not the final product boundary.
+- Treat wxBridage as the first host, not the final product boundary.
 
 Package bootstrap target:
 
@@ -310,7 +310,7 @@ Create the core durable mission model.
   - `MissionAttemptStore`
   - `MissionEventStore`
   - or one combined `MissionRepository`
-- [x] Add a first local persistence implementation using the existing CodexBridge
+- [x] Add a first local persistence implementation using the existing wxBridage
   storage style
 - [x] Persist enough state to recover after process restart:
   - mission
@@ -410,7 +410,7 @@ The first real provider is current Codex app-server execution.
 Completion criteria:
 
 - [x] Mission Control can drive a real Codex run without importing WeChat code
-- [x] Stop/retry behavior remains chat-visible through CodexBridge integration
+- [x] Stop/retry behavior remains chat-visible through wxBridage integration
 
 Phase 4 source-of-truth tests:
 
@@ -471,7 +471,7 @@ Phase 5 source-of-truth tests:
   - `mission runtime continues the same attempt after a normal partial exit and counts provider turns separately from attempts`
   - `mission runtime converts verifier repair verdicts into budget-exhausted failure when no retry budget remains`
 
-## Phase 6: CodexBridge Integration
+## Phase 6: wxBridage Integration
 
 - [x] Make `/agent` call Mission Control instead of owning the runner directly
 - [x] Reuse the same mission state for:
@@ -480,7 +480,7 @@ Phase 5 source-of-truth tests:
   - stop
   - retry
   - result
-- [x] Keep CodexBridge WeChat as the first-class notification/control surface
+- [x] Keep wxBridage WeChat as the first-class notification/control surface
 - [x] Preserve current user-facing behavior as much as possible during migration
 
 Phase 6a landed: `/agent runAgentJob` now delegates execution into Mission
@@ -488,7 +488,7 @@ Control through a bridge-side adapter that:
 
 - persists mission/attempt/event snapshot state on the `AgentJob` compatibility
   record
-- reuses existing CodexBridge turn recovery, approval, interrupt, and WeChat
+- reuses existing wxBridage turn recovery, approval, interrupt, and WeChat
   progress delivery paths as the first host/control surface
 - preserves Mission Control verifier authority and continuation-after-normal-exit
   behavior on the real `/agent` execution path without introducing a new
@@ -542,7 +542,7 @@ Phase 6 source-of-truth tests:
   - `AgentJobService retryJob preserves prior runtime history for fresh reruns via a new mission generation`
 
 Phase 6e landed: public package metadata and checklist status now track the
-verified CodexBridge integration state so that:
+verified wxBridage integration state so that:
 
 - `@codexbridge/mission-control` publishes a validated package phase marker
   instead of a stale earlier-phase label
@@ -570,7 +570,7 @@ that:
   backed by
   current code, not only by historical checklist state
 - the top-level roadmap can mark Mission Control's workflow/workpad/workspace,
-  verifier-authority, checklist-aware continuation, and CodexBridge
+  verifier-authority, checklist-aware continuation, and wxBridage
   control-surface integration summary items complete without drifting from the
   tested implementation
 - the current validation baseline is explicit:
@@ -589,7 +589,7 @@ projection first. Stale-lease recovery no longer prevents the package from
 marking the latest non-terminal attempt as `stopped` when a stop request is
 already persisted.
 
-Phase 9e landed: CodexBridge now exposes a first real local todo
+Phase 9e landed: wxBridage now exposes a first real local todo
 `WorkItemSourceAdapter` on top of assistant-record todos while keeping that
 store fully host-owned. The adapter normalizes those records into
 `source=local-todo` work items, preserves structured
@@ -601,13 +601,13 @@ Phase 9f landed: Mission Control now exposes a package-owned
 `syncMissionSource` command for pristine `draft`/`queued` missions so a
 source-backed work item can refresh the authoritative
 `WorkItem + Mission + MissionGeneration + ChecklistSnapshot` aggregate before
-the first attempt starts. CodexBridge queued `/agent rename` now uses that
+the first attempt starts. wxBridage queued `/agent rename` now uses that
 path when possible instead of rewriting authoritative mission/work-item state
 directly through bridge-local repository access.
 
 Phase 9h landed: Mission Control query read models now surface authoritative
 workflow load state, checklist progression, and workpad/attempt status views.
-CodexBridge `/agent show` now prefers those package-owned views instead of
+wxBridage `/agent show` now prefers those package-owned views instead of
 loading `WORKFLOW.md` or reconstructing attempt/workpad state in the bridge,
 and `/agent result` now prefers authoritative mission `resultText` before
 falling back to thread/session recovery.
@@ -623,36 +623,36 @@ Control.
 Phase 9j landed: package-owned command/query and host-adapter boundaries now
 prefer generic `hostSessionId` / `providerThreadId` fields while preserving
 `bridgeSessionId` / `codexThreadId` as compatibility aliases for the current
-CodexBridge `/agent` migration. Direct Mission Control API create/retry paths
+wxBridage `/agent` migration. Direct Mission Control API create/retry paths
 now accept that host-neutral surface without bridge-specific field names, and
 package/core adapter tests prove the same contract can be consumed outside a
-CodexBridge-only naming scheme.
+wxBridage-only naming scheme.
 
 Phase 9k landed: a package-only host-neutral integration proof now creates,
 runs, queries, and streams a CLI-shaped mission through the generic
 `hostSessionId` / `providerThreadId` contract plus `MissionHostAdapter`
-without importing CodexBridge runtime code. Later hosts can therefore validate
+without importing wxBridage runtime code. Later hosts can therefore validate
 the same mission core behavior through package-owned APIs instead of requiring
 bridge-specific naming or runner logic.
 
 Phase 9l landed: Mission Control now exposes a package-owned `startMission`
 command plus concrete `awaiting_checklist_confirm` /
 `awaiting_prompt_confirm` lifecycle states for the first autonomous run.
-CodexBridge `/agent confirm` now creates a drafted authoritative mission,
+wxBridage `/agent confirm` now creates a drafted authoritative mission,
 walks the user through checklist confirmation and immutable-prompt
 confirmation before queueing the mission, and `/agent show` surfaces those
 package-backed start gates directly from mission detail state.
 
 Phase 9m landed: Mission Control now exposes package-owned loop snapshot read
 and stream surfaces on top of the existing supervision foundation, and
-CodexBridge `/agent show` now renders those package-backed cycle/stage/progress
+wxBridage `/agent show` now renders those package-backed cycle/stage/progress
 fields directly from mission detail state. Summary/detail/execution views now
 carry a normalized `loopSnapshot`, the package exports
 `getMissionLoopSnapshot` plus `streamMissionSnapshots`, and the first host can
 inspect current cycle, stage, checklist item, overall completion, next step,
 blocker, and verifier summary without depending on raw shell log output.
 
-Phase 9n landed: CodexBridge now exposes a first package-backed paused-state
+Phase 9n landed: wxBridage now exposes a first package-backed paused-state
 continuation UX on top of those loop snapshots. `/agent show` now surfaces the
 latest required user action plus an explicit `/agent confirm` continue hint for
 `waiting_user` / `needs_human` / `handoff` / `blocked` missions, and
@@ -664,7 +664,7 @@ Phase 9o landed: Mission Control now materializes `max_loops_reached` as an
 authoritative package status when `loopPolicy.maxCycles` is exhausted before
 another autonomous cycle can begin. The runtime appends a package-owned
 `mission.max_loops_reached` event plus loop-snapshot cycle result instead of
-flattening that budget boundary into a generic failure, and CodexBridge
+flattening that budget boundary into a generic failure, and wxBridage
 `/agent show` now renders that terminal loop-budget state directly from the
 package-backed mission detail view.
 
@@ -673,7 +673,7 @@ Phase 9p landed: Mission Control now exposes package-owned
 authoritative `scope_change_pending` lifecycle. Approved scope changes append a
 new immutable checklist snapshot version inside the active mission generation,
 while rejected changes preserve the current checklist and re-queue the mission.
-CodexBridge `/agent show` now renders the latest proposed plan change directly
+wxBridage `/agent show` now renders the latest proposed plan change directly
 from package detail state, and `/agent confirm [index] [reject]` can resolve
 that proposal without falling back to shell logs or bridge-local state
 mutation.
@@ -681,7 +681,7 @@ mutation.
 Phase 9q landed: Mission Control now exposes a package-owned `submitApproval`
 command plus resume-time human-response payloads so paused missions can carry
 explicit approval decisions and attached human input back into authoritative
-mission state. CodexBridge `/agent show` now renders package-backed pending
+mission state. wxBridage `/agent show` now renders package-backed pending
 approval summaries plus approve/reject/input hints, and `/agent confirm` can
 resolve paused approval/input cases without flattening them into a generic
 resume-only flow.
@@ -769,7 +769,7 @@ Completion criteria:
 - [x] Add explicit host adapter boundaries for session/thread/approval/artifact
   delivery/notification/auth context
 - [x] Expose generic `hostSessionId` / `providerThreadId` boundary fields
-  while keeping transitional CodexBridge compatibility aliases
+  while keeping transitional wxBridage compatibility aliases
 - [x] Move `/agent` reads and control actions further onto package-owned query
   and command contracts
 - [x] Keep stripping bridge-owned runtime truth out of `AgentJob` until it is a
@@ -778,7 +778,7 @@ Completion criteria:
 
 Completion criteria:
 
-- [x] CodexBridge can render and control mission state without reconstructing
+- [x] wxBridage can render and control mission state without reconstructing
   truth from compatibility blobs
 - [x] `AgentJob` can be treated as a rebuildable host projection rather than an
   authoritative store
@@ -798,7 +798,7 @@ Phase 9b landed: Mission Control now exposes a package-owned `createMission`
 command that consumes a normalized `WorkItemSourceSummary`, persists
 authoritative `WorkItem + Mission + MissionGeneration + ChecklistSnapshot`
 records from that source-backed input, and keeps host bindings separate from
-work-item provenance. CodexBridge `/agent` creation now seeds the authoritative
+work-item provenance. wxBridage `/agent` creation now seeds the authoritative
 mission repository through that command with `source=manual` while preserving
 `platform=weixin|telegram` as host-surface binding metadata.
 
@@ -818,7 +818,7 @@ authoritative request instead of requiring bridge-local fake terminal writes
 first. Stopped attempts can now still be derived after stale-lease recovery
 clears `activeAttemptId`, so supervision owns stop reconciliation end-to-end.
 
-Phase 9e landed: CodexBridge now contributes a first real local todo source
+Phase 9e landed: wxBridage now contributes a first real local todo source
 adapter on top of assistant-record todos without pulling assistant-record
 storage into the package. That adapter emits normalized `source=local-todo`
 work items plus source revisions, preserves structured goal/output/checklist
@@ -828,10 +828,10 @@ content when host-side edits invalidate that structured payload digest.
 Phase 9f landed: Mission Control now adds a package-owned pristine source sync
 command that can refresh an untouched source-backed mission aggregate before
 the first attempt starts, while preserving mission identity and host bindings.
-CodexBridge queued `/agent rename` now uses that command when possible so the
+wxBridage queued `/agent rename` now uses that command when possible so the
 authoritative mission/work-item path stays inside the package boundary.
 
-Phase 9g landed: CodexBridge host runtimes now use package-owned mission
+Phase 9g landed: wxBridage host runtimes now use package-owned mission
 supervision for stale recovery and resumable `/agent` dispatch discovery
 instead of resetting host projections and only re-claiming `queued` bridge
 jobs. `MissionSupervisor` recovery/listing no longer requires a full runtime
@@ -843,18 +843,18 @@ of a structural source of run ownership.
 Phase 9h landed: package-owned mission read models now expose authoritative
 workflow/checklist/workpad status views so hosts can render `/agent` state
 without loading `WORKFLOW.md` or reconstructing attempt/checklist progress
-from bridge-local compatibility fields. CodexBridge `/agent show` now consumes
+from bridge-local compatibility fields. wxBridage `/agent show` now consumes
 those package views directly, and `/agent result` prefers authoritative mission
 `resultText` before bridge/session fallbacks.
 
 Phase 9i landed: package-owned pristine source sync now keeps append-oriented
 history instead of resetting authoritative records. Repeated pre-attempt source
 refreshes supersede older `ChecklistSnapshot` versions, preserve the active
-generation identity, and append `mission.source_synced` events so CodexBridge
+generation identity, and append `mission.source_synced` events so wxBridage
 queued `/agent rename` no longer rewrites away prior source-sync audit
 history.
 
-Phase 9n landed: CodexBridge now exposes a first package-backed paused-state
+Phase 9n landed: wxBridage now exposes a first package-backed paused-state
 continuation flow on top of those mission detail and loop snapshot views.
 `/agent show` surfaces the latest required user action plus an explicit
 `/agent confirm` continue hint for `waiting_user` / `needs_human` /
@@ -867,19 +867,19 @@ Phase 9p landed: Mission Control now exposes package-owned
 `scope_change_pending` mission status on top of those package-backed detail
 views. Approved scope changes append a new checklist snapshot version inside
 the active mission generation, rejected changes keep the current checklist,
-and CodexBridge `/agent show` plus `/agent confirm [reject]` now resolve those
+and wxBridage `/agent show` plus `/agent confirm [reject]` now resolve those
 package-backed `PlanChangeRequest` flows without bridge-local state
 reconstruction.
 
 Phase 9q landed: Mission Control now exposes a package-owned `submitApproval`
 command plus resume-time human-response payloads so paused missions can carry
 explicit approval decisions and attached human input back into authoritative
-mission state. CodexBridge `/agent show` now renders package-backed pending
+mission state. wxBridage `/agent show` now renders package-backed pending
 approval summaries plus approve/reject/input hints, and `/agent confirm` can
 resolve those paused approval/input cases without flattening them into a
 generic resume-only flow.
 
-Phase 9r landed: the formal Mission Control architecture and CodexBridge
+Phase 9r landed: the formal Mission Control architecture and wxBridage
 integration docs now match the concrete package contract for confirmation,
 paused-state, and loop-budget lifecycle control. The package-backed runtime
 keeps `draft`/`awaiting_*`/`queued` start gates, treats `handoff` as an
@@ -919,7 +919,7 @@ notifications on top of those same mission snapshots:
 - Mission Control runtime now emits structured host notifications after
   authoritative cycle-result updates, carrying package-backed `loopSnapshot`
   plus `cycleResult` payloads through the existing host adapter boundary
-- CodexBridge `/agent` background execution now forwards those package-owned
+- wxBridage `/agent` background execution now forwards those package-owned
   notifications through the first host send path instead of reconstructing
   progress updates from bridge-local shell/runtime state
 - the first-host policy currently pushes meaningful mid-loop retry/continue

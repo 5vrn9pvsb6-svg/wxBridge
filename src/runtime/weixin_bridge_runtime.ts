@@ -2,7 +2,7 @@ import { parseSlashCommand } from '../core/command_parser.js';
 import { isAgentCommandEnabled } from '../core/command_availability.js';
 import { writeSequencedDebugLog } from '../core/sequenced_stderr.js';
 import { WeixinPoller } from '../platforms/weixin/poller.js';
-import { DesktopThreadSync, type DesktopThreadSyncCoordinator } from './desktop_thread_sync.js';
+import { DesktopThreadSync, desktopThreadBindingKey, type DesktopThreadSyncCoordinator } from './desktop_thread_sync.js';
 import { desktopTurnNotice } from './desktop_turn_notice.js';
 import { DesktopSyncCheckpointStore, desktopSyncKey } from './desktop_sync_checkpoint.js';
 import { deliverDesktopSegment } from './desktop_segment_delivery.js';
@@ -615,7 +615,7 @@ export class WeixinBridgeRuntime {
         onTurnStarted: async (meta) => {
           if (enteredTarget && meta.turnId && meta.threadId === enteredTarget.threadId) {
             desktopTurnKey = desktopSyncKey(event.platform, event.externalScopeId,
-              `${enteredTarget.providerProfileId}:${enteredTarget.bridgeSessionId}:${enteredTarget.threadId}`, meta.turnId);
+              desktopThreadBindingKey(enteredTarget), meta.turnId);
           }
         },
         onProgress: async (progress) => {
@@ -746,9 +746,8 @@ export class WeixinBridgeRuntime {
         this.desktopSyncCheckpoints.markFinalDelivered(desktopTurnKey);
       }
       if (codexTurnMeta?.finalSource === 'desktop_rollout'
-        && enteredTarget && currentTarget?.threadId === enteredTarget.threadId
-        && currentTarget.bridgeSessionId === enteredTarget.bridgeSessionId
-        && currentTarget.providerProfileId === enteredTarget.providerProfileId) {
+        && enteredTarget && currentTarget
+        && desktopThreadBindingKey(currentTarget) === desktopThreadBindingKey(enteredTarget)) {
         const notice = await this.sendTextWithRetry({
           externalScopeId: event.externalScopeId,
           content: desktopTurnNotice(this.i18n, codexTurnMeta.outputState === 'provider_error', codexTurnMeta.durationMs),

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Align CodexBridge with the current official Codex app permission model so the bridge, CLI command surface, stored session settings, and Web composer all use the same four top-level permission modes:
+Align wxBridage with the current official Codex app permission model so the bridge, CLI command surface, stored session settings, and Web composer all use the same four top-level permission modes:
 
 1. `default-permissions`
 2. `auto-review`
@@ -15,7 +15,7 @@ This replaces the current bridge-centric 3-preset model:
 - `default`
 - `full-access`
 
-The main product requirement is that CodexBridge should no longer invent its own top-level permission states when the official Codex app already defines the user-facing model.
+The main product requirement is that wxBridage should no longer invent its own top-level permission states when the official Codex app already defines the user-facing model.
 
 ## Source Of Truth
 
@@ -56,9 +56,9 @@ This preserves behavior without misrepresenting the session as one of the offici
 
 `custom` means:
 
-- CodexBridge must not force `sandboxMode`
-- CodexBridge must not force `approvalPolicy`
-- CodexBridge must not force `approvalsReviewer`
+- wxBridage must not force `sandboxMode`
+- wxBridage must not force `approvalPolicy`
+- wxBridage must not force `approvalsReviewer`
 
 The turn should defer to the local Codex configuration profile / `config.toml`.
 
@@ -72,7 +72,7 @@ The only semantic difference is reviewer routing:
 
 - `approvalsReviewer = auto_review`
 
-CodexBridge must store this separately from `approvalPolicy` and `sandboxMode`.
+wxBridage must store this separately from `approvalPolicy` and `sandboxMode`.
 
 ## Data Model
 
@@ -193,7 +193,7 @@ For:
 - `auto-review`
 - `full-access`
 
-CodexBridge should compute explicit runtime overrides from the canonical mode.
+wxBridage should compute explicit runtime overrides from the canonical mode.
 
 ### Custom mode
 

@@ -21,7 +21,7 @@ Current status:
 - `Phase 10` service exposure is now the next unfinished execution phase
 - later providers/sources remain deferred
 - `/auto` is out of scope
-- `CodexBridge` integration cleanup around `/agent` remains a validated part
+- `wxBridage` integration cleanup around `/agent` remains a validated part
   of the closed `Phase 9v` baseline, not a hidden side effect
 
 Current re-entry rules:
@@ -40,7 +40,7 @@ Current re-entry rules:
 请继续推进 `@codexbridge/mission-control` 的工作。
 
 不可变目标：
-CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流；`@codexbridge/mission-control` 的目标是做成一个通用的、面向 agent 的长期任务运行时，使一个目标能够持续执行直到完成、明确失败或需要人工介入。当前以 Codex 作为第一真实 provider，以 CodexBridge 作为第一 host / control surface；`openai-agents-js` 是后续 provider 方向，不是当前主线。
+wxBridage 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流；`@codexbridge/mission-control` 的目标是做成一个通用的、面向 agent 的长期任务运行时，使一个目标能够持续执行直到完成、明确失败或需要人工介入。当前以 Codex 作为第一真实 provider，以 wxBridage 作为第一 host / control surface；`openai-agents-js` 是后续 provider 方向，不是当前主线。
 
 优先工作分支：
 - `track/mission-control`
@@ -62,7 +62,7 @@ CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥�
    - `OpenAIAgentsMissionProvider`
    - 可选 Web host / dashboard
    - 纯服务暴露包装之外的 later providers / sources
-5. 当前 loop 不只是补 package core，也要继续收敛 `CodexBridge` 作为第一 host 的集成边界。
+5. 当前 loop 不只是补 package core，也要继续收敛 `wxBridage` 作为第一 host 的集成边界。
 6. 代码/通用 draft 模板、bounded routing 规则、状态驱动循环要求，以
    `docs/architecture/agent-draft-templates.md` 为审查基线。
 7. 若需实现或收紧 `/agent` draft 路由/模板，请同时参考：
@@ -175,7 +175,7 @@ CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥�
 请继续推进 `@codexbridge/mission-control` 的工作。
 
 不可变目标：
-CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流；`@codexbridge/mission-control` 的目标是做成一个通用的、面向 agent 的长期任务运行时，使一个目标能够持续执行直到完成、明确失败或需要人工介入。当前以 Codex 作为第一真实 provider，以 CodexBridge 作为第一 host / control surface；`openai-agents-js` 是后续 provider 方向，不是当前主线。
+wxBridage 的目标是通过微信稳定暴露 Codex 原生能力，并在桥接层扩展微信命令和个人助理工作流；`@codexbridge/mission-control` 的目标是做成一个通用的、面向 agent 的长期任务运行时，使一个目标能够持续执行直到完成、明确失败或需要人工介入。当前以 Codex 作为第一真实 provider，以 wxBridage 作为第一 host / control surface；`openai-agents-js` 是后续 provider 方向，不是当前主线。
 
 优先工作分支：
 - `track/mission-control`
@@ -197,7 +197,7 @@ CodexBridge 的目标是通过微信稳定暴露 Codex 原生能力，并在桥�
    - 可选 Web host / dashboard
    - 纯服务暴露包装之外的 later providers / sources
 4. 如果更早 phase 中还有未完成但又阻塞主线的项，可以先补齐。
-5. 当前 loop 不只是补 package core，也要继续收敛 `CodexBridge` 作为第一 host 的集成边界。
+5. 当前 loop 不只是补 package core，也要继续收敛 `wxBridage` 作为第一 host 的集成边界。
 
 先阅读并遵守：
 - `docs/architecture/codexbridge-core-architecture.md`
@@ -230,11 +230,11 @@ Mission Control 必须保留的核心方向：
 3. “完成”不等于 provider 返回 completed，而等于 acceptance criteria 通过验证。
 4. 第一版先以 Codex 为唯一真实 provider；`openai-agents-js` 是后续 provider，不是当前主线。
 5. Mission Control 不是 dashboard，不是聊天框架，不是多 agent 平台；它首先是一个 goal-driven durable runtime。
-6. Mission Control 是通用 agent runtime；CodexBridge 只是当前第一 host，不是产品边界本身。
-7. 当前主线不是“只把 package 做漂亮”，而是让 package 核心与 CodexBridge 集成边界同时收敛到正式 spec。
+6. Mission Control 是通用 agent runtime；wxBridage 只是当前第一 host，不是产品边界本身。
+7. 当前主线不是“只把 package 做漂亮”，而是让 package 核心与 wxBridage 集成边界同时收敛到正式 spec。
 
 严格边界：
-1. CodexBridge 继续负责微信、Telegram、slash commands、session/thread 绑定、审批、retry/reconnect、SendGate、助理记录、自动化和用户交互。
+1. wxBridage 继续负责微信、Telegram、slash commands、session/thread 绑定、审批、retry/reconnect、SendGate、助理记录、自动化和用户交互。
 2. `@codexbridge/mission-control` 只负责：
    - mission domain model
    - mission state machine
@@ -246,7 +246,7 @@ Mission Control 必须保留的核心方向：
    - attempt / event / workpad 持久化
    - stop / retry / approve / resume 控制
    - host-neutral commands / queries / streams
-3. `@codexbridge/mission-control` 不能依赖 CodexBridge 的平台/runtime/store/i18n 实现；CodexBridge 可以依赖它，它不能反向依赖 CodexBridge。
+3. `@codexbridge/mission-control` 不能依赖 wxBridage 的平台/runtime/store/i18n 实现；wxBridage 可以依赖它，它不能反向依赖 wxBridage。
 4. `/auto` 是 scheduler-owned host 功能，不属于 Mission Control；不要再把 `/auto` 接回 Mission Control。
 5. 不要优先做 web dashboard、monorepo/workspace、多 package 发布、复杂多 agent 编排。
 6. 除非 Mission Control 工作被真实阻塞，否则不要把工作重心切到其他 package。
@@ -285,7 +285,7 @@ Mission Control 必须保留的核心方向：
 4. 当前优先级始终是：
    - checklist-first domain hardening
    - package-owned `commands / queries / streams`
-   - CodexBridge host integration cleanup around `/agent`
+   - wxBridage host integration cleanup around `/agent`
    - first-host prompt/checklist confirmation UX
    - first-host paused-state / plan-change resolution UX
    - first-host loop snapshot / progress UX

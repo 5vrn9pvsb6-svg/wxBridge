@@ -61,6 +61,7 @@ export class SessionRouter {
     now = Date.now(),
     executionMode: PlatformExecutionMode = 'standalone',
     standaloneBridgeSessionId: string | null = null,
+    desktopTarget: import('../types/core.js').DesktopTargetIdentity | null = null,
   ): void {
     this.platformBindings.setBinding({
       platform: scopeRef.platform,
@@ -68,6 +69,7 @@ export class SessionRouter {
       bridgeSessionId,
       executionMode,
       standaloneBridgeSessionId,
+      desktopTarget,
       updatedAt: now,
     });
   }

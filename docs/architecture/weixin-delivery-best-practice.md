@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-CodexBridge 当前的微信出站问题，不是单一的 `final` 识别 bug，而是整条发送链路没有把“消息交付”当成一个独立、可恢复的事务。
+wxBridage 当前的微信出站问题，不是单一的 `final` 识别 bug，而是整条发送链路没有把“消息交付”当成一个独立、可恢复的事务。
 
 已确认的真实故障形态有两类：
 
@@ -30,8 +30,8 @@ Hermes 可以借鉴的点：
 
 Hermes 不能直接照抄的点：
 
-1. Hermes 的 Weixin `_send_message()` 本身没有像 CodexBridge 一样严格断言 `ret != 0`。
-2. CodexBridge 必须继续保留“业务 ret 非 0 就算失败”的严格语义。
+1. Hermes 的 Weixin `_send_message()` 本身没有像 wxBridage 一样严格断言 `ret != 0`。
+2. wxBridage 必须继续保留“业务 ret 非 0 就算失败”的严格语义。
 
 ## Final Design
 

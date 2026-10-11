@@ -1,8 +1,8 @@
-import fs from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { Duplex } from 'node:stream';
+import { openUnixDesktopTransport, type DesktopIpcTransportFactory } from './desktop_ipc_transport.js';
 
 const MAX_FRAME_BYTES = 8 * 1024 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -22,7 +22,8 @@ interface IpcMessage {
 }
 
 export interface DesktopTurnSubmitter {
-  submitTurn(threadId: string, prompt: string): Promise<{ turnId: string }>;
+  submitTurn(threadId: string, prompt: string, signal?: AbortSignal): Promise<{ turnId: string }>;
+  probeThreadOwner?(threadId: string, signal?: AbortSignal): Promise<{ clientId: string }>;
 }
 
 export class DesktopIpcSubmissionError extends Error {
@@ -34,24 +35,29 @@ export class DesktopIpcSubmissionError extends Error {
 
 /** Connects to the desktop owner; it never starts a server or becomes a writer. */
 export class CodexDesktopIpcClient implements DesktopTurnSubmitter {
-  private readonly socketPath: string;
   private readonly timeoutMs: number;
+  private readonly hostId: string;
+  private readonly openTransport: DesktopIpcTransportFactory;
 
   constructor({
     socketPath = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'ipc', 'ipc.sock'),
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-  }: { socketPath?: string; timeoutMs?: number } = {}) {
+    hostId = 'local',
+    transportFactory,
+  }: { socketPath?: string; timeoutMs?: number; hostId?: string; transportFactory?: DesktopIpcTransportFactory } = {}) {
     if (!path.isAbsolute(socketPath)) { throw new Error('Desktop IPC socket path must be absolute'); }
+    if (hostId !== 'local' && !/^remote-wsl:[A-Za-z0-9_.!~*'()%:-]{1,384}$/u.test(hostId)) { throw new Error('Invalid desktop host id'); }
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) { throw new Error('Invalid desktop IPC timeout'); }
-    this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
+    this.hostId = hostId;
+    this.openTransport = transportFactory ?? (signal => openUnixDesktopTransport(socketPath, timeoutMs, signal));
   }
 
-  async probeThreadOwner(threadId: string): Promise<{ clientId: string }> {
-    return this.withConnection(async (connection) => ({ clientId: await this.findOwner(connection, threadId) }));
+  async probeThreadOwner(threadId: string, signal?: AbortSignal): Promise<{ clientId: string }> {
+    return this.withConnection(async (connection) => ({ clientId: await this.findOwner(connection, threadId) }), signal);
   }
 
-  async submitTurn(threadId: string, prompt: string): Promise<{ turnId: string }> {
+  async submitTurn(threadId: string, prompt: string, signal?: AbortSignal): Promise<{ turnId: string }> {
     validateThreadId(threadId);
     if (!prompt.trim() || prompt.length > 16_000) { throw new Error('Invalid desktop IPC prompt'); }
     return this.withConnection(async (connection) => {
@@ -68,8 +74,11 @@ export class CodexDesktopIpcClient implements DesktopTurnSubmitter {
             },
             context: { inheritThreadSettings: true },
           },
-        }, 2, owner);
-      } catch {
+        }, this.hostId === 'local' ? 2 : 3, owner, this.hostId === 'local' ? undefined : this.hostId);
+      } catch (error) {
+        if (error instanceof DesktopIpcRequestError && !error.dispatched) {
+          throw new DesktopIpcSubmissionError('共享消息尚未提交，桌面连接已断开；请重新连接会话。');
+        }
         // A disconnect/timeout can happen after desktop acceptance. Never resubmit.
         throw new DesktopIpcSubmissionError('共享消息可能已提交，但未收到桌面确认；请先查看会话输出，不要重复发送。', true);
       }
@@ -84,12 +93,12 @@ export class CodexDesktopIpcClient implements DesktopTurnSubmitter {
         throw new DesktopIpcSubmissionError('桌面返回了不兼容的提交确认；消息可能已提交，请勿重复发送。', true);
       }
       return { turnId };
-    });
+    }, signal);
   }
 
   private async findOwner(connection: DesktopIpcConnection, threadId: string): Promise<string> {
     validateThreadId(threadId);
-    const response = await connection.request('thread-owner-discovery', { hostId: 'local', conversationId: threadId }, 1);
+    const response = await connection.request('thread-owner-discovery', { hostId: this.hostId, conversationId: threadId }, 1);
     if (response.resultType !== 'success' || typeof response.handledByClientId !== 'string'
       || !response.handledByClientId || response.result?.supportsUntrustedAppInput !== true) {
       throw new DesktopIpcSubmissionError('未找到兼容的桌面会话持有者；请保持桌面端运行，并在桌面打开该会话后重试。');
@@ -97,52 +106,44 @@ export class CodexDesktopIpcClient implements DesktopTurnSubmitter {
     return response.handledByClientId;
   }
 
-  private async withConnection<T>(operation: (connection: DesktopIpcConnection) => Promise<T>): Promise<T> {
-    assertPrivateSocket(this.socketPath);
-    const connection = new DesktopIpcConnection(this.socketPath, this.timeoutMs);
+  private async withConnection<T>(operation: (connection: DesktopIpcConnection) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const transport = await this.openTransport(signal);
+    const connection = new DesktopIpcConnection(transport.stream, this.timeoutMs);
+    const abort = () => connection.close();
+    signal?.addEventListener('abort', abort, { once: true });
     try {
+      signal?.throwIfAborted();
       await connection.connect();
       return await operation(connection);
     } finally {
+      signal?.removeEventListener('abort', abort);
       connection.close();
+      await transport.close();
     }
   }
 }
 
 class DesktopIpcConnection {
-  private readonly socket: net.Socket;
+  private readonly socket: Duplex;
   private readonly pending = new Map<string, {
     resolve: (response: IpcMessage) => void;
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
     method: string;
+    dispatched: boolean;
   }>();
   private buffer = Buffer.alloc(0);
   private clientId = 'initializing-client';
   private closed = false;
 
-  constructor(socketPath: string, private readonly timeoutMs: number) {
-    this.socket = net.createConnection(socketPath);
+  constructor(socket: Duplex, private readonly timeoutMs: number) {
+    this.socket = socket;
     this.socket.on('data', (chunk: Buffer) => this.readFrames(chunk));
     this.socket.on('error', () => this.fail(new Error('Desktop IPC connection failed')));
     this.socket.on('close', () => this.fail(new Error('Desktop IPC connection closed')));
   }
 
   async connect(): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      const cleanup = () => {
-        clearTimeout(timer);
-        this.socket.off('connect', connected);
-        this.socket.off('error', failed);
-        this.socket.off('close', failed);
-      };
-      const connected = () => { cleanup(); resolve(); };
-      const failed = () => { cleanup(); reject(new DesktopIpcSubmissionError('无法连接桌面共享服务；请保持桌面端运行。')); };
-      const timer = setTimeout(failed, this.timeoutMs);
-      this.socket.once('connect', connected);
-      this.socket.once('error', failed);
-      this.socket.once('close', failed);
-    });
     const response = await this.request('initialize', { clientType: 'codexbridge' }, 0);
     if (response.resultType !== 'success' || typeof response.result?.clientId !== 'string' || !response.result.clientId) {
       throw new DesktopIpcSubmissionError('桌面 IPC 初始化失败或协议不兼容。');
@@ -150,15 +151,17 @@ class DesktopIpcConnection {
     this.clientId = response.result.clientId;
   }
 
-  request(method: string, params: Record<string, unknown>, version: number, targetClientId?: string): Promise<IpcMessage> {
-    if (this.closed || !this.socket.writable) { return Promise.reject(new Error('Desktop IPC is closed')); }
+  request(method: string, params: Record<string, unknown>, version: number, targetClientId?: string, hostId?: string): Promise<IpcMessage> {
+    if (this.closed || !this.socket.writable) { return Promise.reject(new DesktopIpcRequestError('Desktop IPC is closed', false)); }
     const requestId = randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.fail(new Error('Desktop IPC request timed out')), this.timeoutMs);
-      this.pending.set(requestId, { resolve, reject, timer, method });
+      const pending = { resolve, reject, timer, method, dispatched: false };
+      this.pending.set(requestId, pending);
       try {
+        pending.dispatched = true;
         this.write({ type: 'request', requestId, sourceClientId: this.clientId,
-          method, params, version, targetClientId, timeoutMs: this.timeoutMs });
+          method, params, version, targetClientId, hostId, timeoutMs: this.timeoutMs });
       } catch {
         this.fail(new Error('Desktop IPC write failed'));
       }
@@ -169,7 +172,10 @@ class DesktopIpcConnection {
 
   private fail(error: Error): void {
     this.closed = true;
-    for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error); }
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new DesktopIpcRequestError(error.message, pending.dispatched));
+    }
     this.pending.clear();
     this.buffer = Buffer.alloc(0);
     this.socket.destroy();
@@ -213,22 +219,12 @@ class DesktopIpcConnection {
   }
 }
 
-function validateThreadId(threadId: string): void {
-  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(threadId)) { throw new Error('Invalid desktop thread id'); }
+class DesktopIpcRequestError extends Error {
+  constructor(message: string, readonly dispatched: boolean) { super(message); }
 }
 
-function assertPrivateSocket(socketPath: string): void {
-  const uid = process.getuid?.();
-  try {
-    const socket = fs.lstatSync(socketPath);
-    const directory = fs.lstatSync(path.dirname(socketPath));
-    if (uid === undefined || !socket.isSocket() || socket.uid !== uid || socket.mode & 0o022
-      || !directory.isDirectory() || directory.uid !== uid || directory.mode & 0o022) {
-      throw new Error('Unsafe socket ownership or permissions');
-    }
-  } catch {
-    throw new DesktopIpcSubmissionError('桌面 IPC 入口不存在或权限不安全；请保持桌面端运行。');
-  }
+function validateThreadId(threadId: string): void {
+  if (!/^[A-Za-z0-9_-]{1,128}$/u.test(threadId)) { throw new Error('Invalid desktop thread id'); }
 }
 
 function safeProtocolError(value: unknown): string {

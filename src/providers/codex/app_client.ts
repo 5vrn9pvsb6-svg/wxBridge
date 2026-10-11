@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { writeSequencedStderrLine } from '../../core/sequenced_stderr.js';
 import { readCodexAccountIdentity } from './auth_state.js';
 import { createCodexCliLaunchSpec } from './cli_command.js';
+import { getCodexHostPlatform } from './host/index.js';
 import type {
   ProviderAppInfo,
   ProviderApprovalRequest,
@@ -381,7 +382,7 @@ export class CodexAppClient extends EventEmitter {
     clientInfo = {
       name: 'codexbridge',
       title: 'CodexBridge',
-      version: '0.1.13',
+      version: '0.1.18',
     },
     spawnImpl = spawn,
     webSocketFactory = (url) => new WebSocket(url),
@@ -4498,10 +4499,8 @@ function createCodexLaunchError({
     : '';
   const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
   if (code === 'ENOENT' || /spawn .* ENOENT/i.test(message)) {
-    const windowsHint = platform === 'win32'
-      ? ' Ensure the Codex CLI is installed and reachable on PATH, or set CODEX_REAL_BIN to the full path of codex.exe or codex.cmd.'
-      : ' Ensure the Codex CLI is installed and reachable on PATH.';
-    return new Error(`Failed to launch Codex app-server with "${command}": command not found.${windowsHint}`);
+    const installationHint = getCodexHostPlatform(platform).commandNotFoundHint;
+    return new Error(`Failed to launch Codex app-server with "${command}": command not found.${installationHint}`);
   }
   return new Error(`Failed to launch Codex app-server with "${command}": ${message}`);
 }
@@ -4565,55 +4564,8 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function waitForChildExit(child: ChildProcess | null, timeoutMs: number): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    if (!child || child.exitCode !== null) {
-      resolve();
-      return;
-    }
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('Timed out waiting for Codex child process to exit'));
-    }, timeoutMs);
-    const onExit = () => {
-      cleanup();
-      resolve();
-    };
-    const cleanup = () => {
-      clearTimeout(timer);
-      child.off('exit', onExit);
-    };
-    child.on('exit', onExit);
-  });
-}
-
 async function terminateChildProcess(child: ChildProcess, platform: NodeJS.Platform): Promise<void> {
-  if (platform === 'win32' && typeof child.pid === 'number') {
-    await terminateWindowsProcessTree(child.pid);
-    return;
-  }
-  child.kill('SIGTERM');
-  await waitForChildExit(child, 5000).catch(() => {
-    if (child.exitCode === null) {
-      child.kill('SIGKILL');
-    }
-    return waitForChildExit(child, 2000).catch(() => {});
-  });
-}
-
-function terminateWindowsProcessTree(pid: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    });
-    killer.on('error', () => {
-      resolve();
-    });
-    killer.on('exit', () => {
-      resolve();
-    });
-  });
+  await getCodexHostPlatform(platform).terminateChildProcess(child);
 }
 
 export { readCodexAccountIdentity };

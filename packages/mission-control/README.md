@@ -1,6 +1,6 @@
 # @codexbridge/mission-control
 
-Mission Control runtime package, currently developed inside the CodexBridge
+Mission Control runtime package, currently developed inside the wxBridage
 repository.
 
 ## Status
@@ -62,12 +62,12 @@ Current phase:
   safe checkpoints instead of treating host-side stop UX as the source of
   lifecycle truth. Pristine `draft`/`queued` source-backed missions can now
   also be re-synced through the package command layer before the first attempt
-  starts, so hosts such as CodexBridge no longer need to rewrite authoritative
+  starts, so hosts such as wxBridage no longer need to rewrite authoritative
   mission/work-item records directly just to keep queued source metadata in
   sync. Those pristine source refreshes now preserve append-oriented mission
   history by superseding prior checklist snapshot versions and appending
   `mission.source_synced` audit events instead of destructively resetting the
-  authoritative aggregate. CodexBridge host runtimes now also use
+  authoritative aggregate. wxBridage host runtimes now also use
   package-owned supervision for
   stale mission recovery and resumable `/agent` dispatch discovery, reducing
   `loop.sh` to an operational fallback instead of a structural runtime owner.
@@ -78,10 +78,10 @@ Current phase:
   The outward-facing host-binding contract now also prefers generic
   `hostSessionId` / `providerThreadId` fields while keeping
   `bridgeSessionId` / `codexThreadId` as compatibility aliases during the
-  CodexBridge migration. A package-only host-neutral proof now also exercises
+  wxBridage migration. A package-only host-neutral proof now also exercises
   create/run/query/stream flows with a CLI-shaped host adapter using those
   generic bindings, so later hosts can consume the same mission core without
-  requiring CodexBridge-specific runtime glue. The runtime now also emits
+  requiring wxBridage-specific runtime glue. The runtime now also emits
   package-backed host notifications after authoritative cycle updates, and the
   first host can proactively push those retry/continue loop snapshots without
   falling back to shell-owned progress UX. Package-owned loop budget
@@ -109,5 +109,5 @@ This package should preserve the Symphony-style separation between:
 - execution
 - status surfaces
 
-CodexBridge may depend on this package as its first host surface. This package
-must not import from CodexBridge platform/runtime/store/i18n modules.
+wxBridage may depend on this package as its first host surface. This package
+must not import from wxBridage platform/runtime/store/i18n modules.

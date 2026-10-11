@@ -1,6 +1,6 @@
-# CodexBridge Automation Subsystem
+# wxBridage Automation Subsystem
 
-This document describes CodexBridge's `/auto` subsystem as a scheduler-owned
+This document describes wxBridage's `/auto` subsystem as a scheduler-owned
 host capability. It is intentionally separate from Mission Control.
 
 ## Boundary

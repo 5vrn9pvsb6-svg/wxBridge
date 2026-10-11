@@ -1,6 +1,6 @@
 ---
 name: agent-draft-router
-description: Generate checklist-first CodexBridge `/agent` drafts from natural-language intake using bounded action routing, skill-owned task typing, scope clarification, and immutable prompt scaffolds. Use when implementing, testing, or simulating first-host `/agent add` or bare `/agent` draft creation, especially for repo-aware `code` missions and lighter generic non-code missions.
+description: Generate checklist-first wxBridage `/agent` drafts from natural-language intake using bounded action routing, skill-owned task typing, scope clarification, and immutable prompt scaffolds. Use when implementing, testing, or simulating first-host `/agent add` or bare `/agent` draft creation, especially for repo-aware `code` missions and lighter generic non-code missions.
 ---
 
 # Agent Draft Router

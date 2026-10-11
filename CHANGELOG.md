@@ -7,6 +7,12 @@ All notable changes to wxBridage are documented here.
 - Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
 - Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
 
+## 0.1.19 - 2026-10-11
+
+- Fix Windows test portability: check POSIX checkpoint file modes only on Unix platforms and use a Windows temporary directory for portable Claude session tests.
+- Limit Claude channel integration tests to platforms supporting their Unix sockets and ownership checks; retain transcript, session catalog and launcher checks on Windows.
+- Clarify that the current Claude sharing channel requires macOS, Linux or WSL; native Windows Claude channels are not implemented.
+
 ## 0.1.18 - 2026-10-11
 
 - Extract macOS, Windows and Linux/WSL host implementations into separate provider-local adapters; keep desktop sharing, target identity, errors and IPC contracts unchanged.

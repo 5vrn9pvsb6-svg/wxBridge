@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -15,8 +16,14 @@ import { ClaudeCodeProviderPlugin, createClaudeCodeProfile } from '../../../src/
 import { buildClaudeShareArgs } from '../../../src/providers/claude/launcher.js';
 import { createCodexBridgeRuntime } from '../../../src/runtime/bootstrap.js';
 
+const posixChannelOptions = {
+  skip: process.platform === 'win32' ? 'Claude channel transport requires Unix sockets and POSIX UID permissions.' : false,
+};
+
 async function fixture(t: any) {
-  const dir = await fs.mkdtemp('/tmp/cbc-');
+  // Keep POSIX socket paths short enough for the transport's 100-byte limit.
+  const tempRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp';
+  const dir = await fs.mkdtemp(path.join(tempRoot, 'cbc-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const projectsDir = path.join(dir, 'projects');
   const project = path.join(projectsDir, 'project');
@@ -75,7 +82,7 @@ test('session inventory is bounded, ignores sidechain files and symlinks, and us
   await assert.rejects(() => f.provider.readThread({ providerProfile: createClaudeCodeProfile(), threadId: '../../bad' }), /UUID/);
 });
 
-test('shared turn reaches its existing channel, correlates meta input and streams once with duration', async (t) => {
+test('shared turn reaches its existing channel, correlates meta input and streams once with duration', posixChannelOptions, async (t) => {
   const f = await fixture(t); const notifications: any[] = [];
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async (text, meta) => { notifications.push({ text, meta }); await f.append(f.user(text, meta.codex_request_id), f.answer('working', false), f.answer('done'), f.end()); } });
@@ -91,7 +98,7 @@ test('shared turn reaches its existing channel, correlates meta input and stream
   await waitForPoll(25); controller.abort(); await watching; assert.deepEqual(observed, []);
 });
 
-test('unconfirmed channel event reports uncertainty, blocks another submit and never starts a fallback writer', async (t) => {
+test('unconfirmed channel event reports uncertainty, blocks another submit and never starts a fallback writer', posixChannelOptions, async (t) => {
   const f = await fixture(t); let calls = 0;
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir, notify: async () => { calls += 1; } });
   t.after(() => server.close());
@@ -100,7 +107,7 @@ test('unconfirmed channel event reports uncertainty, blocks another submit and n
   assert.equal(calls, 1);
 });
 
-test('observer syncs PC-origin output and completion, ignores own output and cancels cleanly', async (t) => {
+test('observer syncs PC-origin output and completion, ignores own output and cancels cleanly', posixChannelOptions, async (t) => {
   const f = await fixture(t);
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir, notify: async () => {} });
   t.after(() => server.close());
@@ -113,7 +120,7 @@ test('observer syncs PC-origin output and completion, ignores own output and can
   assert.equal(events.at(-1).durationMs, 35000);
 });
 
-test('a possibly accepted turn remains observable after channel acknowledgment fails', async (t) => {
+test('a possibly accepted turn remains observable after channel acknowledgment fails', posixChannelOptions, async (t) => {
   const f = await fixture(t);
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async (text, meta) => {
@@ -131,7 +138,7 @@ test('a possibly accepted turn remains observable after channel acknowledgment f
   assert.equal(observed[1].text, 'accepted despite lost acknowledgement');
 });
 
-test('shutdown stops waiting without interrupting the Claude owner', async (t) => {
+test('shutdown stops waiting without interrupting the Claude owner', posixChannelOptions, async (t) => {
   const f = await fixture(t); let stops = 0;
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async (text, meta) => { await f.append(f.user(text, meta.codex_request_id)); }, interrupt: async () => { stops += 1; } });
@@ -144,7 +151,7 @@ test('shutdown stops waiting without interrupting the Claude owner', async (t) =
   assert.equal(stops, 0);
 });
 
-test('channel rejects unsafe permissions, duplicate owners, oversized input and stale stop; only interrupts current turn', async (t) => {
+test('channel rejects unsafe permissions, duplicate owners, oversized input and stale stop; only interrupts current turn', posixChannelOptions, async (t) => {
   const f = await fixture(t); let stops = 0;
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async () => {}, interrupt: async () => { stops += 1; } });
@@ -160,7 +167,7 @@ test('channel rejects unsafe permissions, duplicate owners, oversized input and 
   await f.client.request(f.id, { op: 'stop', requestId: randomUUID(), turnId: input.uuid }); assert.equal(stops, 1);
 });
 
-test('text and transcribed voice are allowed; binary attachments and standalone execution are rejected', async (t) => {
+test('text and transcribed voice are allowed; binary attachments and standalone execution are rejected', posixChannelOptions, async (t) => {
   const f = await fixture(t);
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async (text, meta) => { await f.append(f.user(text, meta.codex_request_id), f.answer('voice reply'), f.end()); } });
@@ -171,7 +178,7 @@ test('text and transcribed voice are allowed; binary attachments and standalone 
   await assert.rejects(() => f.provider.startTurn({ ...params, event: { ...params.event, metadata: {} } }), /进入 Claude 共享会话/);
 });
 
-test('real MCP stdio server advertises channel contract and forwards a socket message as a notification', async (t) => {
+test('real MCP stdio server advertises channel contract and forwards a socket message as a notification', posixChannelOptions, async (t) => {
   const f = await fixture(t);
   const transport = new StdioClientTransport({ command: process.execPath,
     args: ['--import', fileURLToPath(import.meta.resolve('tsx')), fileURLToPath(new URL('../../../src/providers/claude/channel_server.ts', import.meta.url)),
@@ -203,7 +210,7 @@ test('launcher resumes selected session with channel enabled and retains tools a
   assert.equal(config.mcpServers['codexbridge-weixin'].command, process.execPath);
 });
 
-test('/enter claude preserves the independent binding, selects from ten-item pages and /exit restores Codex', async (t) => {
+test('/enter claude preserves the independent binding, selects from ten-item pages and /exit restores Codex', posixChannelOptions, async (t) => {
   const f = await fixture(t);
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async (text, meta) => { await f.append(f.user(text, meta.codex_request_id), f.answer('shared Claude reply'), f.end(3200)); } });
@@ -242,7 +249,7 @@ test('/enter claude preserves the independent binding, selects from ten-item pag
   assert.equal(runtime.services.bridgeSessions.resolveScopeExecutionMode(scope), 'standalone');
 });
 
-test('missing Claude owner does not change binding; first-time /exit uses the default independent provider', async (t) => {
+test('missing Claude owner does not change binding; first-time /exit uses the default independent provider', posixChannelOptions, async (t) => {
   const f = await fixture(t);
   await assert.rejects(() => f.provider.prepareDesktopThreadSharing({ threadId: f.id }), /尚未启用微信通道/);
   const native = { kind: 'openai-native', async startThread() { return { threadId: 'new-independent', cwd: f.dir, title: 'WeChat' }; },
@@ -260,7 +267,7 @@ test('missing Claude owner does not change binding; first-time /exit uses the de
   assert.equal(runtime.services.bridgeSessions.resolveScopeSession(scope)?.providerProfileId, 'openai-default');
 });
 
-test('the coordinator retains a pending Claude turn and /stop targets that same owner', async (t) => {
+test('the coordinator retains a pending Claude turn and /stop targets that same owner', posixChannelOptions, async (t) => {
   const f = await fixture(t); let stops = 0;
   const server = await startClaudeChannel({ root: f.client.root, sessionId: f.id, projectsDir: f.projectsDir,
     notify: async (text, meta) => { await f.append(f.user(text, meta.codex_request_id)); },

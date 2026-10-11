@@ -33,7 +33,10 @@ test('desktop segment restart retries a failed chunk while retaining acknowledge
     text, phase: 'commentary', signal: new AbortController().signal,
     send: async (chunk) => { sent.push(chunk); return { success: true, error: '' }; } });
   assert.equal(sent.length, 4);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  // Windows does not expose separate owner/group/other permission bits.
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  }
   assert.deepEqual(fs.readdirSync(directory), ['checkpoint.json']);
 });
 

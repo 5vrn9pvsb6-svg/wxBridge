@@ -23,7 +23,7 @@ wxBridage 的核心功能是桌面会话共享：把微信接入电脑上已有�
 | Codex | Codex 桌面应用持有的已有会话 | 本地桌面 IPC，桌面端保持运行；Windows/WSL2 适配代码已实现，实机验收仍待完成。 |
 | Claude（Claude Code） | 电脑上已有的交互式 Claude Code CLI 会话 | 在所选会话中启用本地 MCP Channel，启动器沿用原会话 ID。 |
 
-这里的 Claude 支持具体指 **Claude Code 会话**；普通 Claude Desktop 应用的聊天会话暂不在此适配范围内。
+这里的 Claude 支持具体指 **Claude Code 会话**；普通 Claude Desktop 应用的聊天会话暂不在此适配范围内。当前 Claude 共享通道依赖 Unix Socket 和用户归属检查，需要把桥接器与 Claude Code 运行在 macOS、Linux 或 WSL 中；原生 Windows 的 Claude 共享通道尚未实现。
 
 ## 在微信开始共享
 

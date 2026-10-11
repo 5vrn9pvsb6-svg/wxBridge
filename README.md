@@ -23,7 +23,7 @@ Original upstream repository: [Gan-Xing/CodexBridge](https://github.com/Gan-Xing
 | Codex | An existing thread owned by the Codex desktop app | Local desktop IPC; the desktop app remains running. Windows/WSL2 adapters are implemented, with real platform acceptance still pending. |
 | Claude (Claude Code) | An existing interactive Claude Code CLI session on the computer | A local MCP Channel, enabled once in the selected session. The launcher resumes the original session ID. |
 
-Claude support here means **Claude Code sessions**. Ordinary Claude Desktop app conversations are outside this adapter.
+Claude support here means **Claude Code sessions**. Ordinary Claude Desktop app conversations are outside this adapter. The current Claude sharing channel uses Unix sockets and user ownership checks, so run the bridge and Claude Code in macOS, Linux or WSL. Native Windows Claude sharing is not implemented.
 
 ## Start Sharing from WeChat
 

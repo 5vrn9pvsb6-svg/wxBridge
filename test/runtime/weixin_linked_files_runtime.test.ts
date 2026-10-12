@@ -125,7 +125,7 @@ test('browsing historical replies does not automatically send their local files'
   assert.equal(files.length, 0);
 });
 
-test('a missing shared report gets a separate failure notice and still reports completion and elapsed time', async (context) => {
+test('a missing shared report reports completion and elapsed time before the separate attachment failure notice', async (context) => {
   const { cwd, texts, files, create } = fixture(context);
   const answer = '[未生成报告](missing.md)';
   const target = { threadId: 'desktop', bridgeSessionId: 'shared', providerProfileId: 'claude-code' };
@@ -141,6 +141,7 @@ test('a missing shared report gets a separate failure notice and still reports c
   await runtime.processInboundEvent({ platform: 'weixin', externalScopeId: 'wx', text: '报告' });
   assert.equal(files.length, 0);
   assert.equal(texts[0], answer);
-  assert.match(texts[1], /文件不存在/);
-  assert.match(texts[2], /本轮回复已结束，耗时：1分5秒/);
+  assert.equal(texts.length, 3);
+  assert.match(texts[1], /本轮回复已结束，耗时：1分5秒/);
+  assert.match(texts[2], /文件不存在/);
 });

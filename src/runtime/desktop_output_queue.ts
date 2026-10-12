@@ -41,6 +41,7 @@ export class DesktopOutputQueue {
     onError: (error: unknown) => Promise<void> | void;
     retryBaseMs?: number;
     retryMaxMs?: number;
+    progressBatchMs?: number;
   }) {
     if (!options.filePath || !fs.existsSync(options.filePath)) { return; }
     if (fs.statSync(options.filePath).size > MAX_BYTES) { throw new Error('Desktop output queue exceeds size limit'); }
@@ -57,6 +58,10 @@ export class DesktopOutputQueue {
     this.update(identity, turn => {
       if (turn.segments.some(item => item.phase === phase && item.text === text)) { return false; }
       turn.segments.push({ phase: phase as 'commentary' | 'final_answer', text });
+      if (phase === 'commentary' && turn.revision === turn.deliveredRevision) {
+        turn.retryAt = Date.now() + (this.options.progressBatchMs ?? 0);
+      }
+      if (phase === 'final_answer') { turn.retryAt = 0; }
       return true;
     });
     await this.flush(scopeKey(identity));
@@ -66,6 +71,7 @@ export class DesktopOutputQueue {
     if (!this.options.isCurrent(identity)) { return; }
     this.update(identity, turn => {
       turn.completion = { kind: update.kind === 'failed' ? 'failed' : 'complete', text: update.text, durationMs: update.durationMs ?? null };
+      turn.retryAt = 0;
       return true;
     });
     await this.flush(scopeKey(identity));

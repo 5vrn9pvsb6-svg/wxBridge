@@ -1,5 +1,7 @@
 # Desktop output synchronization
 
+Current delivery scheduling: [WeChat reply budget (0.1.25)](weixin-reply-budget.md) supersedes the immediate-progress and final-before-notice ordering below when preserving the observed per-context allowance requires deferral.
+
 Scope: the user approved attaching to a running desktop turn, forwarding new visible output in batches, and delivering its final result without duplicates in this conversation. Implementation uses the existing TypeScript runtime, desktop rollout reader, and WeChat delivery queue. No database or new dependency is involved.
 
 ## Requirements

@@ -7,6 +7,7 @@ interface Checkpoint {
   finalDelivered: boolean;
   noticeDelivered: boolean;
   updatedAt: number;
+  progressBatch?: { text: string; chunks: string[] } | null;
 }
 
 const MAX_TURNS = 256;
@@ -18,7 +19,7 @@ export function desktopSyncKey(...parts: string[]): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
-/** Stores acknowledgements only; private message text and account IDs are not persisted. */
+/** Private acknowledgements plus at most one frozen, unacknowledged progress batch per turn. */
 export class DesktopSyncCheckpointStore {
   private records: Record<string, Checkpoint> = {};
 
@@ -34,6 +35,10 @@ export class DesktopSyncCheckpointStore {
       if (!HASH.test(key) || !Array.isArray(entry?.chunks) || entry.chunks.length > MAX_CHUNKS
         || !entry.chunks.every((hash) => typeof hash === 'string' && HASH.test(hash))
         || typeof entry.finalDelivered !== 'boolean' || typeof entry.noticeDelivered !== 'boolean'
+        || (entry.progressBatch != null && (typeof entry.progressBatch.text !== 'string'
+          || Buffer.byteLength(entry.progressBatch.text, 'utf8') > 64 * 1024
+          || !Array.isArray(entry.progressBatch.chunks) || entry.progressBatch.chunks.length > MAX_CHUNKS
+          || !entry.progressBatch.chunks.every(hash => typeof hash === 'string' && HASH.test(hash))))
         || !Number.isFinite(entry.updatedAt)) { throw new Error('Invalid desktop sync checkpoint entry'); }
       this.records[key] = entry;
     }
@@ -52,6 +57,13 @@ export class DesktopSyncCheckpointStore {
 
   markFinalDelivered(key: string): void { this.update(key, { finalDelivered: true }); }
   markNoticeDelivered(key: string): void { this.update(key, { noticeDelivered: true }); }
+  setProgressBatch(key: string, progressBatch: Checkpoint['progressBatch']): void { this.update(key, { progressBatch }); }
+  acknowledgeProgressBatch(key: string): void {
+    const record = this.get(key);
+    const chunks = [...new Set([...record.chunks, ...(record.progressBatch?.chunks ?? [])])];
+    if (chunks.length > MAX_CHUNKS) { throw new Error('Desktop sync turn exceeds its checkpoint limit'); }
+    this.update(key, { chunks, progressBatch: null });
+  }
 
   private update(key: string, fields: Partial<Checkpoint>): void {
     this.records[key] = { ...this.get(key), ...fields, updatedAt: Date.now() };

@@ -44,6 +44,7 @@ function harness(context: any, providerProfileId = 'codex') {
     },
   };
   const create = () => new WeixinBridgeRuntime({
+    desktopSyncProgressBatchMs: 0,
     bridgeCoordinator: coordinator,
     desktopSyncCheckpointPath: path.join(root, 'checkpoint.json'),
     desktopSyncRetryBaseMs: 10, desktopSyncRetryMaxMs: 20, previewIntervalMs: 0, internalThreadCleanupMs: 0,
@@ -76,10 +77,10 @@ test(`${provider}: offline desktop output including completion recovers without 
   assert.equal(runtime.desktopThreadSync.isBusy(h.event.externalScopeId), false);
   h.setOnline(true);
   await until(() => h.sent.some(text => text.includes('本轮回复已结束')));
-  assert.deepEqual(h.sent, ['entered', 'progress', 'final result', '本轮回复已结束，耗时：1分5秒。']);
+  assert.deepEqual(h.sent, ['entered', 'final result', '本轮回复已结束，耗时：1分5秒。']);
   assert.equal(h.observers(), 1);
   const progressIds = h.attempts.filter(item => item.content === 'progress').map(item => item.deliveryId);
-  assert.ok(progressIds.length > 1);
+  assert.ok(progressIds.length >= 1);
   assert.equal(new Set(progressIds).size, 1);
   assert.ok(progressIds[0]);
 });
@@ -92,7 +93,7 @@ test(`${provider}: WeChat-started shared output finishes while delivery is offli
   assert.deepEqual(h.sent, []);
   h.setOnline(true);
   await until(() => h.sent.some(text => text.includes('本轮回复已结束')));
-  assert.deepEqual(h.sent, ['own progress', 'own result', '本轮回复已结束，耗时：1分30秒。']);
+  assert.deepEqual(h.sent, ['own result', '本轮回复已结束，耗时：1分30秒。']);
 });
 }
 

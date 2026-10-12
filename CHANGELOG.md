@@ -7,6 +7,14 @@ All notable changes to wxBridage are documented here.
 - Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
 - Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
 
+## 0.1.25 - 2026-10-12
+
+- Batch shared progress for 30 seconds and budget against the locally observed ten replies per WeChat context, including command, media and caption acknowledgements.
+- Reserve three sends from progress, append a one-time `/status` reminder near the limit, and prioritize final results and completion/duration notices over unsent interim progress.
+- Keep long final results queued across context renewal and restart; reserve the last send for a completion notice that explicitly identifies pending result content.
+- Persist hashed per-context counters and freeze unacknowledged progress batches to prevent changing or replaying their contents during retries.
+- This mitigates the observed server limit; it does not promise unlimited unsolicited delivery or renewal when the phone returns to the foreground.
+
 ## 0.1.24 - 2026-10-12
 
 - Retry pending shared output five seconds after each failure without a retry-count limit or dependence on inbound/foreground/context events.

@@ -5,7 +5,8 @@ import { WeixinPoller } from '../platforms/weixin/poller.js';
 import { DesktopThreadSync, desktopThreadBindingKey, type DesktopThreadSyncCoordinator } from './desktop_thread_sync.js';
 import { desktopTurnNotice } from './desktop_turn_notice.js';
 import { DesktopSyncCheckpointStore, desktopSyncKey } from './desktop_sync_checkpoint.js';
-import { deliverDesktopSegment } from './desktop_segment_delivery.js';
+import { deliverDesktopSegment, deliverDesktopProgress, DesktopOutputDeferredError } from './desktop_segment_delivery.js';
+import type { WeixinDeliveryPurpose } from '../platforms/weixin/reply_budget.js';
 import { WeixinLinkedFiles } from './weixin_linked_files.js';
 import { DesktopOutputQueue, type DesktopOutputIdentity, type DesktopOutputTurn } from './desktop_output_queue.js';
 import { createI18n, type Translator } from '../i18n/index.js';
@@ -24,6 +25,7 @@ interface DeliveryResult {
   failedText: string;
   error: string;
   errorCode?: number | null;
+  deferred?: boolean;
 }
 
 interface RuntimeResponseMessage {
@@ -62,7 +64,7 @@ interface PlatformPluginLike {
   stop(): Promise<void>;
   pollOnce(): Promise<{ syncCursor?: string | null; events: InboundTextEvent[] }>;
   commitSyncCursor?(syncCursor: string | null | undefined): Promise<void> | void;
-  sendText(params: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string }): Promise<DeliveryResult | null | undefined>;
+  sendText(params: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string; deliveryPurpose?: WeixinDeliveryPurpose }): Promise<DeliveryResult | null | undefined>;
   sendTyping?(params: { externalScopeId: string; status: 'start' | 'stop' }): Promise<void> | void;
   sendMedia?(params: { externalScopeId: string; filePath: string; caption?: string | null }): Promise<PlatformMediaDeliveryResult | null | undefined>;
 }
@@ -249,6 +251,7 @@ export class WeixinBridgeRuntime {
     desktopSyncRetryBaseMs = 5_000,
     desktopSyncRetryMaxMs = 60_000,
     desktopSyncMaxMessageLength = 4000,
+    desktopSyncProgressBatchMs = 30_000,
   }) {
     this.platformPlugin = platformPlugin;
     this.bridgeCoordinator = bridgeCoordinator;
@@ -282,6 +285,7 @@ export class WeixinBridgeRuntime {
       filePath: desktopSyncOutboxPath,
       retryBaseMs: desktopSyncRetryBaseMs,
       retryMaxMs: desktopSyncRetryMaxMs,
+      progressBatchMs: desktopSyncProgressBatchMs,
       isCurrent: identity => {
         const target = this.bridgeCoordinator.resolveDesktopSharedThread?.({ ...identity.event, text: '' });
         return Boolean(target && desktopThreadBindingKey(target) === identity.bindingKey);
@@ -1184,13 +1188,16 @@ export class WeixinBridgeRuntime {
     content,
     formatted = false,
     deliveryId,
+    deliveryPurpose,
   }: {
     externalScopeId: string;
     content: string;
     formatted?: boolean;
     deliveryId?: string;
+    deliveryPurpose?: WeixinDeliveryPurpose;
   }): Promise<DeliveryResult> {
-    const result = await this.platformPlugin.sendText({ externalScopeId, content, ...(formatted ? { formatted: true } : {}), ...(deliveryId ? { deliveryId } : {}) });
+    const result = await this.platformPlugin.sendText({ externalScopeId, content, ...(formatted ? { formatted: true } : {}),
+      ...(deliveryId ? { deliveryId } : {}), ...(deliveryPurpose ? { deliveryPurpose } : {}) });
     return this.normalizeTextDeliveryResult(result, content);
   }
 
@@ -1288,42 +1295,65 @@ export class WeixinBridgeRuntime {
       const target = this.bridgeCoordinator.resolveDesktopSharedThread?.(event);
       return !signal.aborted && target && desktopThreadBindingKey(target) === turn.bindingKey;
     };
+    const send = (deliveryPurpose: WeixinDeliveryPurpose) => async (content: string, deliveryId: string) => isCurrent()
+      ? this.sendTextWithRetry({ externalScopeId: event.externalScopeId, content, formatted: true, deliveryId, deliveryPurpose })
+      : { success: false, error: 'Desktop output binding changed' };
     const sendSegment = (phase: string, text: string) => deliverDesktopSegment({
       store: this.desktopSyncCheckpoints, key: turn.key, phase, text, signal,
       maxMessageLength: this.desktopSyncMaxMessageLength,
-      send: async (content, deliveryId) => isCurrent()
-        ? this.sendTextWithRetry({ externalScopeId: event.externalScopeId, content, formatted: true, deliveryId })
-        : { success: false, error: 'Desktop output binding changed' },
+      send: send(phase === 'completion_notice' || this.desktopSyncCheckpoints.get(turn.key).noticeDelivered ? 'completion' : 'final'),
     });
     if (!isCurrent()) { return false; }
     const linkedFiles = new WeixinLinkedFiles();
-    const finalSegments: string[] = [];
-    for (const segment of turn.segments) {
-      if (!isCurrent()) { return false; }
-      if (!this.desktopSyncCheckpoints.get(turn.key).finalDelivered
-        && !await sendSegment(segment.phase, segment.text)) { return false; }
-      if (segment.phase === 'final_answer') {
-        finalSegments.push(segment.text);
-        linkedFiles.collect(segment.text);
+    let progressDeferred = false;
+    // Once complete, the conclusion supersedes unsent interim progress. Never let it block a result.
+    if (!turn.completion) {
+      try {
+        if (!await deliverDesktopProgress({ store: this.desktopSyncCheckpoints, key: turn.key,
+          texts: turn.segments.filter(segment => segment.phase === 'commentary').map(segment => segment.text),
+          signal, maxMessageLength: this.desktopSyncMaxMessageLength, send: send('progress') })) { return false; }
+      } catch (error) {
+        if (!(error instanceof DesktopOutputDeferredError)) { throw error; }
+        progressDeferred = true;
       }
     }
-    if (!turn.completion) { return true; }
-    const { kind, text, durationMs } = turn.completion;
-    if (!this.desktopSyncCheckpoints.get(turn.key).finalDelivered) {
-      const content = kind === 'failed' ? this.formatProviderFailureMessage(text)
-        : resolveFinalCommitContent(text, isComparablePrefix(finalSegments.join('\n\n'), text) ? finalSegments.join('\n\n') : '');
-      if (content && !await sendSegment('final_commit', content)) { return false; }
-      if (!isCurrent()) { return false; }
-      this.desktopSyncCheckpoints.markFinalDelivered(turn.key);
+    const finalSegments = turn.segments.filter(segment => segment.phase === 'final_answer');
+    for (const segment of finalSegments) { linkedFiles.collect(segment.text); }
+    let resultDeferred = false;
+    try {
+      if (!this.desktopSyncCheckpoints.get(turn.key).finalDelivered) {
+        for (const segment of finalSegments) {
+          if (!isCurrent() || !await sendSegment(segment.phase, segment.text)) { return false; }
+        }
+        if (turn.completion) {
+          const { kind, text } = turn.completion;
+          const preview = finalSegments.map(segment => segment.text).join('\n\n');
+          const content = kind === 'failed' ? this.formatProviderFailureMessage(text)
+            : resolveFinalCommitContent(text, isComparablePrefix(preview, text) ? preview : '');
+          if (content && !await sendSegment('final_commit', content)) { return false; }
+          if (!isCurrent()) { return false; }
+          this.desktopSyncCheckpoints.markFinalDelivered(turn.key);
+        }
+      }
+    } catch (error) {
+      if (!(error instanceof DesktopOutputDeferredError)) { throw error; }
+      resultDeferred = true;
     }
+    if (!turn.completion) { return !progressDeferred && !resultDeferred; }
+    const { kind, text, durationMs } = turn.completion;
+    if (!isCurrent()) { return false; }
+    // Reserve one send for a truthful completion notice even when a long result needs a new context.
+    if (!this.desktopSyncCheckpoints.get(turn.key).noticeDelivered) {
+      const notice = desktopTurnNotice(this.i18n, kind === 'failed', durationMs)
+        + (resultDeferred ? `\n${this.i18n.t('runtime.desktopSync.resultPending')}` : '');
+      if (!await sendSegment('completion_notice', notice)) { return false; }
+      this.desktopSyncCheckpoints.markNoticeDelivered(turn.key);
+    }
+    if (resultDeferred) { return false; }
+    this.desktopSyncCheckpoints.setProgressBatch(turn.key, null);
     if (kind === 'complete' && isCurrent()) {
       linkedFiles.collect(text);
       await this.deliverLinkedFiles(event, linkedFiles, turn.cwd, turn.key, signal);
-    }
-    if (!isCurrent()) { return false; }
-    if (!this.desktopSyncCheckpoints.get(turn.key).noticeDelivered) {
-      if (!await sendSegment('completion_notice', desktopTurnNotice(this.i18n, kind === 'failed', durationMs))) { return false; }
-      this.desktopSyncCheckpoints.markNoticeDelivered(turn.key);
     }
     return true;
   }

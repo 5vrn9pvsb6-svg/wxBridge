@@ -1,7 +1,7 @@
 import { StreamingMarkdownFilter } from './official/markdown_filter.js';
 
 const FENCE_RE = /^```/u;
-const WEIXIN_DELIVERY_LIMIT_BYTES = 2048;
+export const WEIXIN_DELIVERY_LIMIT_BYTES = 2048;
 
 export function formatWeixinText(content: unknown) {
   const normalized = String(content ?? '').replace(/\r\n/g, '\n').trim();

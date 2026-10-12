@@ -30,8 +30,9 @@ import { getExtensionFromMime, getMimeFromFilename } from './official/media/mime
 import { buildTextMessageReq } from './official/send.js';
 import { isWeixinSendResponseError } from './official/send.js';
 import { loadWeixinConfig, validateWeixinConfig, type WeixinConfig } from './config.js';
-import { formatWeixinText, splitWeixinText } from './formatting.js';
+import { formatWeixinText, splitWeixinText, WEIXIN_DELIVERY_LIMIT_BYTES } from './formatting.js';
 import { logWeixinDelivery, weixinSendReason } from './delivery_diagnostics.js';
+import { WeixinReplyBudget, type WeixinDeliveryPurpose } from './reply_budget.js';
 import { writeSequencedDebugLog } from '../../core/sequenced_stderr.js';
 import { createI18n, type Translator } from '../../i18n/index.js';
 import type {
@@ -133,9 +134,12 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     this.nowFn = nowFn;
     this.messageSendQueue = Promise.resolve();
     this.nextMessageSendAt = 0;
+    this.replyBudget = new WeixinReplyBudget(this.config.accountId
+      ? path.join(this.config.accountsDir, `${this.config.accountId}.reply-budget.json`) : null);
   }
 
   id: string;
+  readonly replyBudget: WeixinReplyBudget;
   displayName: string;
   accountStore: WeixinAccountStore;
   config: WeixinConfig;
@@ -423,7 +427,9 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     return { path: filePath };
   }
 
-  async sendText({ externalScopeId, content, formatted = false, deliveryId }: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string }) {
+  async sendText({ externalScopeId, content, formatted = false, deliveryId, deliveryPurpose }: {
+    externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string; deliveryPurpose?: WeixinDeliveryPurpose;
+  }) {
     if (!this.client) {
       return {
         success: false,
@@ -462,6 +468,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
         delivery,
         // Shared output has a durable retry owner. Avoid stacking transport backoff on its timer.
         maxAttempts: deliveryId ? 1 : 4,
+        deliveryPurpose,
       });
       if (!outcome.success) {
         return {
@@ -472,6 +479,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
           failedText: chunkText,
           error: outcome.error,
           errorCode: outcome.errorCode ?? null,
+          deferred: outcome.deferred ?? false,
         };
       }
       deliveredTexts.push(chunkText);
@@ -487,16 +495,18 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     };
   }
 
-  async sendDeliveryWithRetry({ externalScopeId, delivery, maxAttempts = 4 }: {
+  async sendDeliveryWithRetry({ externalScopeId, delivery, maxAttempts = 4, deliveryPurpose }: {
     externalScopeId: string;
     delivery: WeixinTextDelivery;
     maxAttempts?: number;
+    deliveryPurpose?: WeixinDeliveryPurpose;
   }) {
     const chunkText = delivery.payload.msg.item_list[0].text_item.text;
     let lastError = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       let contextToken: string | null = null;
       let receivedResponse = false;
+      let warningIncluded = false;
       const startedAt = this.nowFn();
       debugWeixin('send_text', {
         scopeId: externalScopeId,
@@ -506,14 +516,25 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
       try {
         const result = await this.runWithMessageSendGate(async () => {
           contextToken = getStoredContextToken(this.config.accountsDir, this.config.accountId, externalScopeId);
-          return this.client?.sendMessage({
+          if (!this.replyBudget.canSend(externalScopeId, contextToken, deliveryPurpose)) { return null; }
+          const warning = this.i18n.t('runtime.desktopSync.replyBudgetWarning');
+          warningIncluded = this.replyBudget.shouldWarn(externalScopeId, contextToken, deliveryPurpose)
+            && Buffer.byteLength(`${chunkText}\n\n${warning}`, 'utf8') <= Math.min(this.config.maxMessageLength, WEIXIN_DELIVERY_LIMIT_BYTES);
+          const response = await (this.client?.sendMessage({
             toUserId: delivery.payload.msg.to_user_id,
-            text: chunkText,
+            text: warningIncluded ? `${chunkText}\n\n${warning}` : chunkText,
             contextToken,
             clientId: delivery.payload.msg.client_id,
             timeoutMs: WEIXIN_SEND_MESSAGE_TIMEOUT_MS,
-          }) ?? { ret: -1 };
+          }) ?? { ret: -1 });
+          if (Number(response.ret ?? 0) === 0 && Number((response as { errcode?: number }).errcode ?? 0) === 0) {
+            this.replyBudget.acknowledge(externalScopeId, contextToken, delivery.payload.msg.client_id, warningIncluded);
+          }
+          return response;
         });
+        if (result === null) {
+          return { success: false, error: 'WeChat reply quota reserved; waiting for a new context', deferred: true, errorCode: null };
+        }
         receivedResponse = true;
         logWeixinDelivery('send_result', { scopeId: externalScopeId, contextToken, clientId: delivery.payload.msg.client_id,
           attempt, ret: result.ret ?? null, errcode: (result as { errcode?: number }).errcode ?? null,
@@ -686,13 +707,19 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
       attempt: 1,
     });
     try {
-      const result = await this.runWithMessageSendGate(async () => this.client?.sendMediaFile({
-        filePath: normalizedPath,
-        toUserId: externalScopeId,
-        text: normalizedCaption,
-        contextToken,
-        cdnBaseUrl: this.config.cdnBaseUrl,
-      }) ?? { messageId: null });
+      const result = await this.runWithMessageSendGate(async () => {
+        const latestContext = getStoredContextToken(this.config.accountsDir, this.config.accountId, externalScopeId);
+        const sent = await (this.client?.sendMediaFile({
+          filePath: normalizedPath,
+          toUserId: externalScopeId,
+          text: normalizedCaption,
+          contextToken: latestContext,
+          cdnBaseUrl: this.config.cdnBaseUrl,
+        }) ?? { messageId: null, captionMessageId: null });
+        if (sent.messageId) { this.replyBudget.acknowledge(externalScopeId, latestContext, sent.messageId); }
+        if (sent.captionMessageId) { this.replyBudget.acknowledge(externalScopeId, latestContext, sent.captionMessageId); }
+        return sent;
+      });
       const messageId = typeof result?.messageId === 'string' ? result.messageId.trim() : '';
       if (!messageId) {
         throw new Error('sendMediaFile returned no messageId');
@@ -787,7 +814,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
         await this.sleepImpl(waitMs);
       }
       const result = await task();
-      this.nextMessageSendAt = this.nowFn() + Math.max(0, this.chunkIntervalMs);
+      if (result !== null) { this.nextMessageSendAt = this.nowFn() + Math.max(0, this.chunkIntervalMs); }
       return result;
     } finally {
       releaseCurrent?.();

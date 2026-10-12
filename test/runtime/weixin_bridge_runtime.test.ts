@@ -69,6 +69,7 @@ function makeRuntime({
   desktopSyncRetryBaseMs,
 }: RuntimeHarnessOptions) {
   return new WeixinBridgeRuntime({
+    desktopSyncProgressBatchMs: 0,
     platformPlugin: {
       async start() {},
       async stop() {},

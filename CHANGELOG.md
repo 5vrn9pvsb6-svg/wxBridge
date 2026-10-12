@@ -7,6 +7,13 @@ All notable changes to wxBridage are documented here.
 - Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
 - Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
 
+## 0.1.22 - 2026-10-12
+
+- Keep Codex and Claude shared output subscribed after WeChat send failures; queue visible output, final results and elapsed-time notices for automatic delivery recovery without new inbound messages.
+- Persist a bounded private outbox, restore collected output after restart and cancel pending output when the user exits or changes the shared binding.
+- Reconnect failed output readers with backoff, retain existing chunk acknowledgements, reuse stable text delivery IDs and refresh the WeChat context token for each send attempt.
+- Deliver completion notices after final text succeeds; retain failed notices for retry rather than silently dropping them.
+
 ## 0.1.21 - 2026-10-11
 
 - Send linked Markdown reports as their original `.md` / `.markdown` files, preserving exact contents and encoding instead of creating TXT copies.

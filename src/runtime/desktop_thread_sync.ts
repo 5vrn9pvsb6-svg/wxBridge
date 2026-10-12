@@ -41,6 +41,8 @@ export class DesktopThreadSync {
     coordinator: DesktopThreadSyncCoordinator;
     createDelivery: (event: InboundTextEvent, signal: AbortSignal, identity: { bindingKey: string; turnId: string }) => SyncDelivery;
     onError: (error: unknown, event: InboundTextEvent) => Promise<void>;
+    retryBaseMs?: number;
+    retryMaxMs?: number;
   }) {}
 
   isBusy(scopeId: string): boolean {
@@ -93,6 +95,32 @@ export class DesktopThreadSync {
   }
 
   private async run(event: InboundTextEvent, subscription: Subscription): Promise<void> {
+    let failures = 0;
+    while (!subscription.controller.signal.aborted) {
+      try {
+        await this.observe(event, subscription);
+        if (subscription.controller.signal.aborted) { return; }
+      } catch (error) {
+        if (subscription.controller.signal.aborted) { return; }
+        failures += 1;
+        if (failures === 1 || failures % 10 === 0) {
+          try { await this.options.onError(error, event); } catch { /* Keep recovering if the notification also fails. */ }
+        }
+      }
+      await subscription.delivery?.stop();
+      subscription.delivery = null;
+      subscription.turnId = null;
+      subscription.finalText = '';
+      await waitForRetry(Math.min(this.options.retryMaxMs ?? 60_000,
+        (this.options.retryBaseMs ?? 5_000) * 2 ** Math.min(Math.max(0, failures - 1), 10)), subscription.controller.signal);
+      const target = this.options.coordinator.resolveDesktopSharedThread?.(event);
+      if (!target || desktopThreadBindingKey(target) !== subscription.key) {
+        this.cancel(event.externalScopeId, subscription);
+      }
+    }
+  }
+
+  private async observe(event: InboundTextEvent, subscription: Subscription): Promise<void> {
     const signal = subscription.controller.signal;
     await this.options.coordinator.observeDesktopSharedThread!(event, {
       signal,
@@ -131,6 +159,16 @@ export class DesktopThreadSync {
       },
     });
   }
+}
+
+function waitForRetry(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) { return Promise.resolve(); }
+  return new Promise(resolve => {
+    const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve(); };
+    const timer = setTimeout(finish, ms);
+    timer.unref();
+    signal.addEventListener('abort', finish, { once: true });
+  });
 }
 
 export function desktopThreadBindingKey(target: DesktopSharedThreadTarget): string {

@@ -248,6 +248,7 @@ async function runWeixinServe(args: string[]) {
   const bridgeRuntime = new WeixinBridgeRuntime({
     platformPlugin,
     desktopSyncCheckpointPath: path.join(stateDir, 'runtime', 'desktop-sync-checkpoints.json'),
+    desktopSyncOutboxPath: path.join(stateDir, 'runtime', 'desktop-sync-outbox.json'),
     desktopSyncMaxMessageLength: platformPlugin.config.maxMessageLength,
     bridgeCoordinator: runtime.services.bridgeCoordinator,
     automationJobs: runtime.services.automationJobs,

@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { WeixinAccountStore } from '../../../src/platforms/weixin/account_store.js';
 import { loadWeixinConfig } from '../../../src/platforms/weixin/config.js';
-import { _resetContextTokenStoreForTest } from '../../../src/platforms/weixin/official/context_tokens.js';
+import { _resetContextTokenStoreForTest, setContextToken } from '../../../src/platforms/weixin/official/context_tokens.js';
 import { _resetSessionGuardForTest } from '../../../src/platforms/weixin/official/session_guard.js';
 import { WeixinPlatformPlugin } from '../../../src/platforms/weixin/plugin.js';
 
@@ -941,6 +941,26 @@ test('WeixinPlatformPlugin backs off between ret -2 retries instead of retrying 
   });
 
   assert.deepEqual(waits, [5_000, 10_000, 15_000]);
+});
+
+test('queued desktop sends reuse stable client IDs and pick up a fresh context token on every attempt', async context => {
+  const rootDir = makeTempAccountsDir();
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const plugin = makePlugin({
+    accountStore: new WeixinAccountStore({ rootDir }),
+    sleepImpl: async () => { setContextToken(rootDir, 'bot-account', 'wxid_sender', 'fresh-context'); },
+    config: { enabled: true, accountId: 'bot-account', token: 'token', baseUrl: 'https://ilink.example.com',
+      cdnBaseUrl: 'https://cdn.example.com', dmPolicy: 'open', groupPolicy: 'disabled', allowFrom: [], groupAllowFrom: [],
+      stateDir: rootDir, accountsDir: rootDir, maxMessageLength: 4000 },
+  });
+  setContextToken(rootDir, 'bot-account', 'wxid_sender', 'old-context');
+  const sent: any[] = [];
+  (plugin as any).client = { async sendMessage(payload) { sent.push(payload); return { ret: sent.length === 1 ? -2 : 0 }; } };
+  const request = { externalScopeId: 'wxid_sender', content: 'queued result', deliveryId: 'stable-output-id' };
+  assert.equal((await plugin.sendText(request)).success, true);
+  assert.equal((await plugin.sendText(request)).success, true);
+  assert.deepEqual(sent.map(item => item.contextToken), ['old-context', 'fresh-context', 'fresh-context']);
+  assert.deepEqual(sent.map(item => item.clientId), ['stable-output-id-0', 'stable-output-id-0', 'stable-output-id-0']);
 });
 
 test('WeixinPlatformPlugin does not retry an ambiguous transport failure that may have delivered text', async () => {

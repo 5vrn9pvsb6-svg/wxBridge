@@ -582,6 +582,10 @@ After each shared reply finishes, WeChat receives a separate completion notice, 
 
 Shared rollout messages are sent as intact segments, with splitting only for WeChat's delivery size limit and throttling through its existing queue. Versions such as `rc.129` and IP addresses stay together in normal messages. Successful chunks, final results, and completion notices are acknowledged in `runtime/desktop-sync-checkpoints.json` under the bridge state directory, so restarting or reconnecting skips previously acknowledged output. The checkpoint stores hashes, not chat text, and is scoped to each WeChat chat, desktop binding, and turn. It retains the latest 256 turns. An abrupt crash between WeChat accepting a send and its local acknowledgement being saved can still cause that in-flight chunk to repeat.
 
+If WeChat temporarily rejects a send or the network times out, shared output stays queued and retries automatically with a 5–60 second backoff. You do not need to send a new message to restart delivery. This applies to Codex and Claude Code, for both desktop-started and WeChat-submitted turns. Final results are delivered before the completion/elapsed-time notice; an undelivered notice remains queued too. Reader failures reconnect separately, and each send uses the latest stored WeChat context token.
+
+`runtime/desktop-sync-outbox.json` stores visible output already collected by the bridge, including completed turns awaiting delivery, so it can resume after a service restart. Unlike the hash checkpoint, this private local file contains pending reply text; it is written with owner-only permissions and each turn is removed once delivery is acknowledged. Limits are 256 queued turns, 1 MiB per turn and 16 MiB total; overflow or storage failures are reported rather than silently dropping output. `/exit` or switching the shared binding cancels old pending output. Messages never collected while the bridge was stopped are not recovered from completed provider history. Keep the computer and bridge online; this does not bypass WeChat-side account or delivery restrictions.
+
 WeChat quick reference:
 
 ```text

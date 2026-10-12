@@ -46,6 +46,7 @@ interface RuntimeHarnessOptions {
   internalThreadCleanupMs?: number;
   pollEvents?: any[];
   desktopSyncCheckpointPath?: string;
+  desktopSyncRetryBaseMs?: number;
 }
 
 function makeRuntime({
@@ -65,6 +66,7 @@ function makeRuntime({
   internalThreadCleanupMs = 0,
   pollEvents = null,
   desktopSyncCheckpointPath,
+  desktopSyncRetryBaseMs,
 }: RuntimeHarnessOptions) {
   return new WeixinBridgeRuntime({
     platformPlugin: {
@@ -119,6 +121,7 @@ function makeRuntime({
     automationPollMs,
     internalThreadCleanupMs,
     desktopSyncCheckpointPath,
+    desktopSyncRetryBaseMs,
   });
 }
 
@@ -364,10 +367,12 @@ test('desktop completion notices distinguish failure and absent timing and stop 
   assert.ok(!sent.some((text) => /耗时：9秒/.test(text)));
 });
 
-test('desktop synchronization still reports completion when final text delivery is uncertain', async (context) => {
+test('desktop synchronization retains uncertain final text and sends completion after recovery', async (context) => {
   let callback: any;
   const attempts: string[] = [];
+  let recovered = false;
   const runtime = makeRuntime({
+    desktopSyncRetryBaseMs: 10,
     coordinator: {
       resolveDesktopSharedThread() {
         return { threadId: 'desktop', bridgeSessionId: 'session', providerProfileId: 'openai-default' };
@@ -380,7 +385,7 @@ test('desktop synchronization still reports completion when final text delivery 
     },
     sendText: async ({ content }) => {
       attempts.push(content);
-      if (content === '最终结论。') {
+      if (content === '最终结论。' && !recovered) {
         return {
           success: false,
           deliveredCount: 0,
@@ -401,6 +406,13 @@ test('desktop synchronization still reports completion when final text delivery 
   await callback({ kind: 'complete', turnId: 'active', text: '最终结论。', durationMs: 65000 });
 
   assert.equal(attempts.filter((text) => text === '最终结论。').length, 1);
+  assert.equal(attempts.filter((text) => text === '本轮回复已结束，耗时：1分5秒。').length, 0);
+  recovered = true;
+  const deadline = Date.now() + 1000;
+  while (!attempts.includes('本轮回复已结束，耗时：1分5秒。') && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(attempts.filter((text) => text === '最终结论。').length, 2);
   assert.equal(attempts.filter((text) => text === '本轮回复已结束，耗时：1分5秒。').length, 1);
 });
 

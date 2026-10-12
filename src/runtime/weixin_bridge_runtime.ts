@@ -7,6 +7,7 @@ import { desktopTurnNotice } from './desktop_turn_notice.js';
 import { DesktopSyncCheckpointStore, desktopSyncKey } from './desktop_sync_checkpoint.js';
 import { deliverDesktopSegment } from './desktop_segment_delivery.js';
 import { WeixinLinkedFiles } from './weixin_linked_files.js';
+import { DesktopOutputQueue, type DesktopOutputIdentity, type DesktopOutputTurn } from './desktop_output_queue.js';
 import { createI18n, type Translator } from '../i18n/index.js';
 import type { MissionHostNotification } from '../../packages/mission-control/src/index.js';
 import type {
@@ -61,7 +62,7 @@ interface PlatformPluginLike {
   stop(): Promise<void>;
   pollOnce(): Promise<{ syncCursor?: string | null; events: InboundTextEvent[] }>;
   commitSyncCursor?(syncCursor: string | null | undefined): Promise<void> | void;
-  sendText(params: { externalScopeId: string; content: string; formatted?: boolean }): Promise<DeliveryResult | null | undefined>;
+  sendText(params: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string }): Promise<DeliveryResult | null | undefined>;
   sendTyping?(params: { externalScopeId: string; status: 'start' | 'stop' }): Promise<void> | void;
   sendMedia?(params: { externalScopeId: string; filePath: string; caption?: string | null }): Promise<PlatformMediaDeliveryResult | null | undefined>;
 }
@@ -160,6 +161,9 @@ interface WeixinBridgeRuntimeOptions {
   internalThreadCleanupMs?: number;
   locale?: string | null;
   desktopSyncCheckpointPath?: string | null;
+  desktopSyncOutboxPath?: string | null;
+  desktopSyncRetryBaseMs?: number;
+  desktopSyncRetryMaxMs?: number;
   desktopSyncMaxMessageLength?: number;
 }
 
@@ -223,6 +227,7 @@ export class WeixinBridgeRuntime {
   desktopThreadSync: DesktopThreadSync;
   desktopSyncCheckpoints: DesktopSyncCheckpointStore;
   desktopSyncMaxMessageLength: number;
+  desktopOutputQueue: DesktopOutputQueue;
 
   constructor({
     platformPlugin,
@@ -240,6 +245,9 @@ export class WeixinBridgeRuntime {
     internalThreadCleanupMs = 24 * 60 * 60 * 1000,
     locale = null,
     desktopSyncCheckpointPath = null,
+    desktopSyncOutboxPath = desktopSyncCheckpointPath ? `${desktopSyncCheckpointPath}.outbox.json` : null,
+    desktopSyncRetryBaseMs = 5_000,
+    desktopSyncRetryMaxMs = 60_000,
     desktopSyncMaxMessageLength = 4000,
   }) {
     this.platformPlugin = platformPlugin;
@@ -270,49 +278,34 @@ export class WeixinBridgeRuntime {
     this.automationSweepInFlight = null;
     this.internalThreadCleanupTimer = null;
     this.internalThreadCleanupInFlight = null;
+    this.desktopOutputQueue = new DesktopOutputQueue({
+      filePath: desktopSyncOutboxPath,
+      retryBaseMs: desktopSyncRetryBaseMs,
+      retryMaxMs: desktopSyncRetryMaxMs,
+      isCurrent: identity => {
+        const target = this.bridgeCoordinator.resolveDesktopSharedThread?.({ ...identity.event, text: '' });
+        return Boolean(target && desktopThreadBindingKey(target) === identity.bindingKey);
+      },
+      deliver: (turn, signal) => this.deliverQueuedDesktopOutput(turn, signal),
+      onError: error => this.onError(error),
+    });
     this.desktopThreadSync = new DesktopThreadSync({
       coordinator: this.bridgeCoordinator,
+      retryBaseMs: desktopSyncRetryBaseMs,
+      retryMaxMs: desktopSyncRetryMaxMs,
       createDelivery: (event, signal, { bindingKey, turnId }) => {
-        const key = desktopSyncKey(event.platform, event.externalScopeId, bindingKey, turnId);
-        const finalAnswer = createStreamState();
-        const linkedFiles = new WeixinLinkedFiles();
-        const workspace = this.bridgeCoordinator.resolveOutputWorkspace?.(event) ?? null;
+        const identity: DesktopOutputIdentity = { event, bindingKey, turnId,
+          cwd: this.bridgeCoordinator.resolveOutputWorkspace?.(event) ?? null };
         return {
           progress: async (progress) => {
-            if (progress.outputKind === 'final_answer') { linkedFiles.collect(progress.text); }
-            if (signal.aborted || this.desktopSyncCheckpoints.get(key).finalDelivered) { return; }
-            const text = String(progress.delta || progress.text).trim();
-            const delivered = await deliverDesktopSegment({
-              store: this.desktopSyncCheckpoints, key, phase: progress.outputKind, text, signal,
-              maxMessageLength: this.desktopSyncMaxMessageLength,
-              send: (content) => this.sendTextWithRetry({ externalScopeId: event.externalScopeId, content, formatted: true }),
-            });
-            if (delivered && progress.outputKind === 'final_answer') { appendPreviewText(finalAnswer, text); }
+            if (signal.aborted) { return; }
+            await this.desktopOutputQueue.segment(identity, progress.outputKind, String(progress.delta || progress.text).trim());
           },
           finish: async (update) => {
             if (signal.aborted) { return; }
-            const response = { type: 'message', messages: [{ text: update.kind === 'failed' ? '' : update.text }] };
-            if (!this.desktopSyncCheckpoints.get(key).finalDelivered) {
-              const delivery = await this.ensureFinalDelivered(event, finalAnswer, response, {
-                outputState: update.kind === 'failed' ? 'provider_error' : 'complete',
-                finalSource: 'desktop_rollout',
-                errorMessage: update.kind === 'failed' ? update.text : null,
-              });
-              if (delivery.delivered) { this.desktopSyncCheckpoints.markFinalDelivered(key); }
-            }
-            if (update.kind === 'complete') {
-              linkedFiles.collect(update.text);
-              await this.deliverLinkedFiles(event, linkedFiles, workspace, key, signal);
-            }
-            if (!signal.aborted && !this.desktopSyncCheckpoints.get(key).noticeDelivered) {
-              const notice = await this.sendTextWithRetry({
-                externalScopeId: event.externalScopeId,
-                content: desktopTurnNotice(this.i18n, update.kind === 'failed', update.durationMs),
-              });
-              if (notice.success) { this.desktopSyncCheckpoints.markNoticeDelivered(key); }
-            }
+            await this.desktopOutputQueue.complete(identity, update);
           },
-          stop: async () => { await this.stopPreviewStreaming(finalAnswer); },
+          stop: async () => {},
         };
       },
       onError: async (error, event) => {
@@ -327,6 +320,7 @@ export class WeixinBridgeRuntime {
 
   async start(): Promise<void> {
     await this.platformPlugin.start();
+    this.desktopOutputQueue.resume();
     this.desktopThreadSync.resume();
     for (const scope of this.bridgeCoordinator.listDesktopSharedScopes?.() ?? []) {
       this.desktopThreadSync.reconcile({ ...scope, text: '' });
@@ -354,6 +348,7 @@ export class WeixinBridgeRuntime {
     this.poller = null;
     this.stopAutomationScheduler();
     this.stopInternalThreadCleanupScheduler();
+    await this.desktopOutputQueue.stop();
     await this.desktopThreadSync.stop();
     await this.flushAllPendingInboundMerges();
     await this.waitForIdle();
@@ -594,6 +589,7 @@ export class WeixinBridgeRuntime {
     } = {},
   ): Promise<RuntimeResponse> {
     const enteredTarget = this.bridgeCoordinator.resolveDesktopSharedThread?.(event);
+    this.desktopOutputQueue.wake(event);
     if (!parseSlashCommand(String(event.text ?? ''))) { this.desktopThreadSync.reconcile(event); }
     if (!parseSlashCommand(String(event.text ?? '')) && this.desktopThreadSync.isBusy(event.externalScopeId)) {
       const content = this.i18n.t('runtime.desktopSync.busy');
@@ -606,6 +602,7 @@ export class WeixinBridgeRuntime {
     const linkedFiles = new WeixinLinkedFiles();
     let outputWorkspace: string | null | undefined;
     let desktopTurnKey: string | null = null;
+    let desktopOutputIdentity: DesktopOutputIdentity | null = null;
     const desktopTurnController = new AbortController();
     let hasDesktopCommentary = false;
     debugRuntime('process_inbound_event_start', {
@@ -628,6 +625,7 @@ export class WeixinBridgeRuntime {
           if (enteredTarget && meta.turnId && meta.threadId === enteredTarget.threadId) {
             desktopTurnKey = desktopSyncKey(event.platform, event.externalScopeId,
               desktopThreadBindingKey(enteredTarget), meta.turnId);
+            desktopOutputIdentity = { event, bindingKey: desktopThreadBindingKey(enteredTarget), turnId: meta.turnId, cwd: outputWorkspace };
           }
         },
         onProgress: async (progress) => {
@@ -635,15 +633,9 @@ export class WeixinBridgeRuntime {
           if (options.suppressProgressDelivery) {
             return;
           }
-          if (desktopTurnKey) {
+          if (desktopOutputIdentity) {
             const text = String(progress.delta || progress.text).trim();
-            const delivered = await deliverDesktopSegment({
-              store: this.desktopSyncCheckpoints, key: desktopTurnKey, phase: progress.outputKind, text,
-              signal: desktopTurnController.signal,
-              maxMessageLength: this.desktopSyncMaxMessageLength,
-              send: (content) => this.sendTextWithRetry({ externalScopeId: event.externalScopeId, content, formatted: true }),
-            });
-            if (delivered && progress.outputKind === 'final_answer') { appendPreviewText(streamState, text); }
+            await this.desktopOutputQueue.segment(desktopOutputIdentity, progress.outputKind, text);
             return;
           }
           const progressStream = progress.outputKind === 'commentary'
@@ -659,6 +651,7 @@ export class WeixinBridgeRuntime {
       // Cancel immediately after /exit or a binding switch, before sending its confirmation.
       if (parseSlashCommand(String(event.text ?? ''))) {
         this.desktopThreadSync.reconcile(event, false);
+        this.desktopOutputQueue.reconcile();
       }
       debugRuntime('coordinator_response', {
         scopeId: event.externalScopeId,
@@ -691,6 +684,20 @@ export class WeixinBridgeRuntime {
       }
       const finalText = extractResponseMessageText(response);
       const artifactMessages = extractResponseArtifactMessages(response);
+      if (desktopOutputIdentity && codexTurnMeta) {
+        await this.stopPreviewStreaming(streamState);
+        await this.desktopOutputQueue.complete(desktopOutputIdentity, {
+          kind: codexTurnMeta.outputState === 'complete' ? 'complete' : 'failed',
+          text: codexTurnMeta.outputState === 'complete' ? finalText : codexTurnMeta.errorMessage || finalText || this.i18n.t('runtime.error.incomplete'),
+          durationMs: codexTurnMeta.durationMs,
+        });
+        response.meta = { ...(response.meta ?? {}), runtimeDelivery: {
+          mode: 'desktop_outbox', delivered: this.desktopSyncCheckpoints.get(desktopTurnKey!).finalDelivered,
+        } };
+        if (artifactMessages.length) { await this.deliverArtifactMessages(event, artifactMessages); }
+        if (!options.deferPostResponseAction) { await this.runPostResponseAction(response, event); }
+        return response;
+      }
       const hasComparableFinalText = Boolean(normalizeComparableText(finalText));
       const hasCompleteMediaOnlyFinal = !hasComparableFinalText
         && artifactMessages.length > 0
@@ -784,6 +791,7 @@ export class WeixinBridgeRuntime {
       await stopTypingKeepalive();
       if (hasDesktopCommentary) { await this.stopPreviewStreaming(desktopCommentary); }
       this.desktopThreadSync.reconcile(event);
+      this.desktopOutputQueue.reconcile();
     }
   }
 
@@ -1174,12 +1182,14 @@ export class WeixinBridgeRuntime {
     externalScopeId,
     content,
     formatted = false,
+    deliveryId,
   }: {
     externalScopeId: string;
     content: string;
     formatted?: boolean;
+    deliveryId?: string;
   }): Promise<DeliveryResult> {
-    const result = await this.platformPlugin.sendText({ externalScopeId, content, ...(formatted ? { formatted: true } : {}) });
+    const result = await this.platformPlugin.sendText({ externalScopeId, content, ...(formatted ? { formatted: true } : {}), ...(deliveryId ? { deliveryId } : {}) });
     return this.normalizeTextDeliveryResult(result, content);
   }
 
@@ -1269,6 +1279,52 @@ export class WeixinBridgeRuntime {
       error: this.i18n.t('runtime.error.unknownDeliveryFailure'),
       errorCode: null,
     };
+  }
+
+  private async deliverQueuedDesktopOutput(turn: DesktopOutputTurn, signal: AbortSignal): Promise<boolean> {
+    const event: InboundTextEvent = { ...turn.event, text: '' };
+    const isCurrent = () => {
+      const target = this.bridgeCoordinator.resolveDesktopSharedThread?.(event);
+      return !signal.aborted && target && desktopThreadBindingKey(target) === turn.bindingKey;
+    };
+    const sendSegment = (phase: string, text: string) => deliverDesktopSegment({
+      store: this.desktopSyncCheckpoints, key: turn.key, phase, text, signal,
+      maxMessageLength: this.desktopSyncMaxMessageLength,
+      send: async (content, deliveryId) => isCurrent()
+        ? this.sendTextWithRetry({ externalScopeId: event.externalScopeId, content, formatted: true, deliveryId })
+        : { success: false, error: 'Desktop output binding changed' },
+    });
+    if (!isCurrent()) { return false; }
+    const linkedFiles = new WeixinLinkedFiles();
+    const finalSegments: string[] = [];
+    for (const segment of turn.segments) {
+      if (!isCurrent()) { return false; }
+      if (!this.desktopSyncCheckpoints.get(turn.key).finalDelivered
+        && !await sendSegment(segment.phase, segment.text)) { return false; }
+      if (segment.phase === 'final_answer') {
+        finalSegments.push(segment.text);
+        linkedFiles.collect(segment.text);
+      }
+    }
+    if (!turn.completion) { return true; }
+    const { kind, text, durationMs } = turn.completion;
+    if (!this.desktopSyncCheckpoints.get(turn.key).finalDelivered) {
+      const content = kind === 'failed' ? this.formatProviderFailureMessage(text)
+        : resolveFinalCommitContent(text, isComparablePrefix(finalSegments.join('\n\n'), text) ? finalSegments.join('\n\n') : '');
+      if (content && !await sendSegment('final_commit', content)) { return false; }
+      if (!isCurrent()) { return false; }
+      this.desktopSyncCheckpoints.markFinalDelivered(turn.key);
+    }
+    if (kind === 'complete' && isCurrent()) {
+      linkedFiles.collect(text);
+      await this.deliverLinkedFiles(event, linkedFiles, turn.cwd, turn.key, signal);
+    }
+    if (!isCurrent()) { return false; }
+    if (!this.desktopSyncCheckpoints.get(turn.key).noticeDelivered) {
+      if (!await sendSegment('completion_notice', desktopTurnNotice(this.i18n, kind === 'failed', durationMs))) { return false; }
+      this.desktopSyncCheckpoints.markNoticeDelivered(turn.key);
+    }
+    return true;
   }
 
   private async deliverLinkedFiles(

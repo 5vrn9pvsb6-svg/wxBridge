@@ -32,3 +32,32 @@ test('changing desktop target cancels its observer and gives the new target sepa
   await sync.stop();
   assert.equal(observers[1].signal.aborted, true);
 });
+
+test('observer read failures reconnect automatically and stop cancels future reconnects', async () => {
+  let attempts = 0;
+  let errors = 0;
+  const delivered: string[] = [];
+  const sync = new DesktopThreadSync({
+    coordinator: {
+      resolveDesktopSharedThread: () => ({ threadId: 'thread', bridgeSessionId: 'session', providerProfileId: 'claude-code' }),
+      observeDesktopSharedThread: async (_event, { signal, onEvent }) => {
+        attempts++;
+        if (attempts === 1) { throw new Error('temporarily unreadable transcript'); }
+        await onEvent({ kind: 'progress', turnId: 'turn', text: 'recovered' });
+        await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+      },
+    },
+    createDelivery: () => ({ progress: async progress => { delivered.push(progress.text); }, finish: async () => {}, stop: async () => {} }),
+    onError: async () => { errors++; throw new Error('notification also unavailable'); },
+    retryBaseMs: 5, retryMaxMs: 10,
+  });
+  sync.reconcile({ platform: 'weixin', externalScopeId: 'chat', text: '' });
+  const deadline = Date.now() + 1000;
+  while (!delivered.length && Date.now() < deadline) { await new Promise(resolve => setTimeout(resolve, 5)); }
+  assert.deepEqual(delivered, ['recovered']);
+  assert.equal(attempts, 2);
+  assert.equal(errors, 1);
+  await sync.stop();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(attempts, 2);
+});

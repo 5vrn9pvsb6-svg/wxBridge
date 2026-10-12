@@ -239,15 +239,15 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     };
   }
 
-  buildTextDeliveries({ externalScopeId, content, formatted = false }: { externalScopeId: string; content: string; formatted?: boolean }): WeixinTextDelivery[] {
+  buildTextDeliveries({ externalScopeId, content, formatted = false, deliveryId }: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string }): WeixinTextDelivery[] {
     const contextToken = getStoredContextToken(this.config.accountsDir, this.config.accountId, externalScopeId);
-    return splitWeixinText(formatted ? content : formatWeixinText(content), this.config.maxMessageLength).map((text) => ({
+    return splitWeixinText(formatted ? content : formatWeixinText(content), this.config.maxMessageLength).map((text, index) => ({
       kind: 'weixin.sendmessage',
       payload: buildTextMessageReq({
         to: externalScopeId,
         text,
         contextToken,
-        clientId: `codexbridge-weixin-${crypto.randomUUID()}`,
+        clientId: deliveryId ? `${deliveryId}-${index}` : `codexbridge-weixin-${crypto.randomUUID()}`,
       }) as WeixinTextDelivery['payload'],
     }));
   }
@@ -404,7 +404,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     return { path: filePath };
   }
 
-  async sendText({ externalScopeId, content, formatted = false }: { externalScopeId: string; content: string; formatted?: boolean }) {
+  async sendText({ externalScopeId, content, formatted = false, deliveryId }: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string }) {
     if (!this.client) {
       return {
         success: false,
@@ -432,6 +432,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
       externalScopeId,
       content,
       formatted,
+      deliveryId,
     });
     const deliveredTexts = [];
     for (let index = 0; index < deliveries.length; index += 1) {
@@ -482,7 +483,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
         const result = await this.runWithMessageSendGate(async () => this.client?.sendMessage({
           toUserId: delivery.payload.msg.to_user_id,
           text: chunkText,
-          contextToken: delivery.payload.msg.context_token ?? null,
+          contextToken: getStoredContextToken(this.config.accountsDir, this.config.accountId, externalScopeId),
           clientId: delivery.payload.msg.client_id,
           timeoutMs: WEIXIN_SEND_MESSAGE_TIMEOUT_MS,
         }) ?? { ret: -1 });

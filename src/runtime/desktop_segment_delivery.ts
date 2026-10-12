@@ -9,7 +9,7 @@ export async function deliverDesktopSegment(options: {
   text: string;
   signal: AbortSignal;
   maxMessageLength?: number;
-  send: (content: string) => Promise<{ success: boolean; error: string }>;
+  send: (content: string, deliveryId: string) => Promise<{ success: boolean; error: string }>;
 }): Promise<boolean> {
   const { store, key, phase, text, signal, send } = options;
   const chunks = splitWeixinText(formatWeixinText(text), options.maxMessageLength);
@@ -17,7 +17,7 @@ export async function deliverDesktopSegment(options: {
     if (signal.aborted) { return false; }
     const chunkKey = desktopSyncKey(phase, text, String(index), chunk);
     if (store.get(key).chunks.includes(chunkKey)) { continue; }
-    const result = await send(chunk);
+    const result = await send(chunk, `codexbridge-weixin-${desktopSyncKey(key, chunkKey).slice(0, 32)}`);
     if (!result.success) { throw new Error(result.error || 'Desktop output delivery failed'); }
     // Record acknowledged sends even when exit/shutdown happened while the request was in flight.
     store.acknowledgeChunk(key, chunkKey);

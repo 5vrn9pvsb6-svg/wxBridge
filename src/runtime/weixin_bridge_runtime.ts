@@ -335,6 +335,7 @@ export class WeixinBridgeRuntime {
     this.startInternalThreadCleanupScheduler();
     this.poller = new WeixinPoller({
       plugin: this.platformPlugin,
+      onContextUpdated: (externalScopeId: string) => this.desktopOutputQueue.wake({ platform: 'weixin', externalScopeId }),
       onEvent: async (event) => this.dispatchInboundEvent(event),
       onError: async (error) => {
         await this.onError(error);

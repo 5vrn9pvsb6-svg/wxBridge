@@ -152,8 +152,9 @@ export class DesktopOutputQueue {
         this.storageRetryAt.delete(scope);
       } else {
         const attempts = current.attempts + 1;
-        const delay = Math.min(this.options.retryMaxMs ?? 60_000,
-          (this.options.retryBaseMs ?? 5_000) * 2 ** Math.min(attempts - 1, 10));
+        // Keep probing independently of inbound messages or foreground notifications.
+        // The outbox owns retries; repeated rejections must not stretch the recovery window.
+        const delay = Math.max(1, Math.min(this.options.retryMaxMs ?? 60_000, this.options.retryBaseMs ?? 5_000));
         this.save(this.turns.map(turn => turn.key === snapshot.key ? { ...turn, attempts, retryAt: Date.now() + delay } : turn));
         if (failure && (attempts === 1 || attempts % 10 === 0)) { await this.report(failure); }
         return;

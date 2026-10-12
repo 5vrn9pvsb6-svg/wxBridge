@@ -35,6 +35,35 @@ test('failed sends retry automatically, preserve order and retain a completion p
   assert.ok(attempts >= 2);
 });
 
+test('rejections keep a fixed retry interval and recover without input, context refresh or foreground events', async context => {
+  context.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  let online = false;
+  const attempts: number[] = [];
+  const sent: string[] = [];
+  const queue = new DesktopOutputQueue({ isCurrent: () => true, onError: () => {},
+    deliver: async turn => {
+      attempts.push(Date.now());
+      if (!online) { throw new Error('ret=-2 prepare failed'); }
+      sent.push(turn.completion!.text); return true;
+    },
+  });
+  context.after(() => queue.stop());
+  await queue.complete(identity, { kind: 'complete', text: 'retained result', durationMs: 600000 });
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    context.mock.timers.tick(5000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(attempts.length, attempt + 1, 'every five seconds must attempt again regardless of rejection count');
+  }
+  online = true;
+  context.mock.timers.tick(5000);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.deepEqual(sent, ['retained result']);
+  assert.ok(attempts.slice(1).every((time, index) => time - attempts[index] === 5000));
+  context.mock.timers.tick(60000);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(attempts.length, 22, 'acknowledged output must stop retrying');
+});
+
 test('persistent queue resumes a completed turn after restart and clears private pending text once delivered', async context => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-outbox-'));
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));

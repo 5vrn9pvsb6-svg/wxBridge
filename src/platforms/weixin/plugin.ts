@@ -31,6 +31,7 @@ import { buildTextMessageReq } from './official/send.js';
 import { isWeixinSendResponseError } from './official/send.js';
 import { loadWeixinConfig, validateWeixinConfig, type WeixinConfig } from './config.js';
 import { formatWeixinText, splitWeixinText } from './formatting.js';
+import { logWeixinDelivery, weixinSendReason } from './delivery_diagnostics.js';
 import { writeSequencedDebugLog } from '../../core/sequenced_stderr.js';
 import { createI18n, type Translator } from '../../i18n/index.js';
 import type {
@@ -148,6 +149,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
   i18n: Translator;
   messageSendQueue: Promise<void>;
   nextMessageSendAt: number;
+  private readonly contextUpdatedScopes = new Set<string>();
 
   async start() {
     if (this.running && this.client) {
@@ -193,6 +195,8 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
       });
       return null;
     }
+    // Context belongs to the transport envelope, even when its content is unsupported or empty.
+    this.refreshInboundContext(payload);
     const text = extractText(payload.item_list ?? []);
     const { attachments, errors: attachmentErrors } = await this.downloadInboundAttachments(payload);
     if (!text && attachments.length === 0 && attachmentErrors.length === 0) {
@@ -206,12 +210,6 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
       return null;
     }
     const contextToken = stringValue(payload.context_token);
-    if (contextToken) {
-      setStoredContextToken(this.config.accountsDir, this.config.accountId, senderId, contextToken);
-      if (scope.externalScopeId !== senderId) {
-        setStoredContextToken(this.config.accountsDir, this.config.accountId, scope.externalScopeId, contextToken);
-      }
-    }
     debugWeixin('accept_message', {
       scopeId: scope.externalScopeId,
       chatType: scope.chatType,
@@ -237,6 +235,23 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
         },
       },
     };
+  }
+
+  private refreshInboundContext(payload: WeixinInboundPayload): void {
+    const senderId = stringValue(payload.from_user_id);
+    const token = stringValue(payload.context_token);
+    if (!senderId || senderId === this.config.accountId || !token || payload.message_type === 2) { return; }
+    const scope = resolveWeixinScope(payload, this.config.accountId);
+    if (!this.isScopeAllowed(scope)) { return; }
+    const previous = getStoredContextToken(this.config.accountsDir, this.config.accountId, scope.externalScopeId);
+    if (previous === token) { return; }
+    setStoredContextToken(this.config.accountsDir, this.config.accountId, senderId, token);
+    if (scope.externalScopeId !== senderId) {
+      setStoredContextToken(this.config.accountsDir, this.config.accountId, scope.externalScopeId, token);
+    }
+    this.contextUpdatedScopes.add(scope.externalScopeId);
+    logWeixinDelivery('context_updated', { scopeId: scope.externalScopeId, contextToken: token,
+      hasContent: Boolean(payload.item_list?.length) });
   }
 
   buildTextDeliveries({ externalScopeId, content, formatted = false, deliveryId }: { externalScopeId: string; content: string; formatted?: boolean; deliveryId?: string }): WeixinTextDelivery[] {
@@ -302,6 +317,7 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     for (const message of rawMessages) {
       const dedupeKey = buildInboundDedupeKey(message);
       if (dedupeKey && seenInboundKeys.has(dedupeKey)) {
+        this.refreshInboundContext(message);
         debugWeixin('drop_message', {
           reason: 'duplicate_batch_message',
           dedupeKey,
@@ -338,9 +354,12 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
         messageId: event.metadata?.weixin?.messageId ?? null,
       })),
     });
+    const contextUpdatedScopes = [...this.contextUpdatedScopes];
+    this.contextUpdatedScopes.clear();
     return {
       syncCursor: nextCursor ?? syncCursor,
       events,
+      contextUpdatedScopes,
       raw: response,
     };
   }
@@ -441,6 +460,8 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
       const outcome = await this.sendDeliveryWithRetry({
         externalScopeId,
         delivery,
+        // Shared output has a durable retry owner. Avoid stacking transport backoff on its timer.
+        maxAttempts: deliveryId ? 1 : 4,
       });
       if (!outcome.success) {
         return {
@@ -474,19 +495,29 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
     const chunkText = delivery.payload.msg.item_list[0].text_item.text;
     let lastError = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      let contextToken: string | null = null;
+      let receivedResponse = false;
+      const startedAt = this.nowFn();
       debugWeixin('send_text', {
         scopeId: externalScopeId,
         content: chunkText,
         attempt,
       });
       try {
-        const result = await this.runWithMessageSendGate(async () => this.client?.sendMessage({
-          toUserId: delivery.payload.msg.to_user_id,
-          text: chunkText,
-          contextToken: getStoredContextToken(this.config.accountsDir, this.config.accountId, externalScopeId),
-          clientId: delivery.payload.msg.client_id,
-          timeoutMs: WEIXIN_SEND_MESSAGE_TIMEOUT_MS,
-        }) ?? { ret: -1 });
+        const result = await this.runWithMessageSendGate(async () => {
+          contextToken = getStoredContextToken(this.config.accountsDir, this.config.accountId, externalScopeId);
+          return this.client?.sendMessage({
+            toUserId: delivery.payload.msg.to_user_id,
+            text: chunkText,
+            contextToken,
+            clientId: delivery.payload.msg.client_id,
+            timeoutMs: WEIXIN_SEND_MESSAGE_TIMEOUT_MS,
+          }) ?? { ret: -1 };
+        });
+        receivedResponse = true;
+        logWeixinDelivery('send_result', { scopeId: externalScopeId, contextToken, clientId: delivery.payload.msg.client_id,
+          attempt, ret: result.ret ?? null, errcode: (result as { errcode?: number }).errcode ?? null,
+          durationMs: this.nowFn() - startedAt, reason: weixinSendReason('errmsg' in result ? result.errmsg : undefined) });
         debugWeixin('send_text_result', {
           scopeId: externalScopeId,
           clientId: delivery.payload.msg.client_id,
@@ -518,6 +549,10 @@ export class WeixinPlatformPlugin implements Pick<PlatformPluginContract, 'id' |
           error: error instanceof Error ? (error.stack || error.message) : String(error),
         });
         const errorCode = extractWeixinErrorCode(error);
+        if (!receivedResponse) {
+          logWeixinDelivery('send_failed', { scopeId: externalScopeId, contextToken, clientId: delivery.payload.msg.client_id,
+            attempt, errcode: errorCode, durationMs: this.nowFn() - startedAt });
+        }
         if (errorCode === -2 && attempt < maxAttempts) {
           await this.sleepImpl(Math.max(
             this.chunkIntervalMs,

@@ -7,6 +7,18 @@ All notable changes to wxBridage are documented here.
 - Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
 - Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
 
+## 0.1.24 - 2026-10-12
+
+- Retry pending shared output five seconds after each failure without a retry-count limit or dependence on inbound/foreground/context events.
+- Let the durable outbox own shared-text retry scheduling; remove stacked transport backoff from that path while preserving standalone-message retries.
+- Verify repeated rejection followed by recovery with unchanged context and no user input, plus cancellation and successful-delivery deduplication.
+
+## 0.1.23 - 2026-10-12
+
+- Refresh allowed inbound context before filtering empty or unsupported message content, and wake the shared outbox on context changes without creating an AI turn.
+- Add timestamped delivery diagnostics with hashed identifiers, server result codes and safe error categories; no message bodies or raw context tokens are included.
+- Clarify that retry recovery depends on server acceptance; returning the phone app to the foreground is not a documented context-refresh guarantee.
+
 ## 0.1.22 - 2026-10-12
 
 - Keep Codex and Claude shared output subscribed after WeChat send failures; queue visible output, final results and elapsed-time notices for automatic delivery recovery without new inbound messages.

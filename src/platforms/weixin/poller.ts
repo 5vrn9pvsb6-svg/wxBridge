@@ -11,7 +11,7 @@ interface EventOutcome {
 
 interface WeixinPollerPlugin {
   loadSyncCursor?: () => string | null;
-  pollOnce(params: { syncCursor: string | null }): Promise<{ syncCursor?: string | null; events?: unknown[] }>;
+  pollOnce(params: { syncCursor: string | null }): Promise<{ syncCursor?: string | null; events?: unknown[]; contextUpdatedScopes?: string[] }>;
   commitSyncCursor?: (syncCursor: string | null | undefined) => Promise<void>;
 }
 
@@ -24,6 +24,7 @@ interface WeixinPollerOptions {
   plugin: WeixinPollerPlugin;
   onEvent?: (event: unknown) => Promise<EventOutcome | void> | EventOutcome | void;
   onError?: (error: unknown) => Promise<void> | void;
+  onContextUpdated?: (scopeId: string) => void;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -32,11 +33,13 @@ export class WeixinPoller {
     plugin,
     onEvent = async () => {},
     onError = async () => {},
+    onContextUpdated = () => {},
     sleep = defaultSleep,
   }: WeixinPollerOptions) {
     this.plugin = plugin;
     this.onEvent = onEvent;
     this.onError = onError;
+    this.onContextUpdated = onContextUpdated;
     this.sleep = sleep;
     this.running = false;
     this.nextSyncCursor = null;
@@ -48,6 +51,7 @@ export class WeixinPoller {
   plugin: WeixinPollerPlugin;
   onEvent: (event: unknown) => Promise<EventOutcome | void> | EventOutcome | void;
   onError: (error: unknown) => Promise<void> | void;
+  onContextUpdated: (scopeId: string) => void;
   sleep: (ms: number) => Promise<void>;
   running: boolean;
   nextSyncCursor: string | null;
@@ -62,6 +66,7 @@ export class WeixinPoller {
       try {
         const result = await this.plugin.pollOnce({ syncCursor: this.nextSyncCursor });
         this.nextSyncCursor = result?.syncCursor ?? this.nextSyncCursor;
+        for (const scopeId of result?.contextUpdatedScopes ?? []) { this.onContextUpdated(scopeId); }
         const dispatchOutcome = await this.dispatchEvents(result?.events ?? []);
         void dispatchOutcome.completion.catch(async (error) => {
           // Service-mode cursor persistence must not wait on long-running turn completion.

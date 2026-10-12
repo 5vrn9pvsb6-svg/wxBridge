@@ -948,7 +948,7 @@ test('queued desktop sends reuse stable client IDs and pick up a fresh context t
   context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
   const plugin = makePlugin({
     accountStore: new WeixinAccountStore({ rootDir }),
-    sleepImpl: async () => { setContextToken(rootDir, 'bot-account', 'wxid_sender', 'fresh-context'); },
+    sleepImpl: async () => { throw new Error('shared delivery must leave retry scheduling to its outbox'); },
     config: { enabled: true, accountId: 'bot-account', token: 'token', baseUrl: 'https://ilink.example.com',
       cdnBaseUrl: 'https://cdn.example.com', dmPolicy: 'open', groupPolicy: 'disabled', allowFrom: [], groupAllowFrom: [],
       stateDir: rootDir, accountsDir: rootDir, maxMessageLength: 4000 },
@@ -957,6 +957,9 @@ test('queued desktop sends reuse stable client IDs and pick up a fresh context t
   const sent: any[] = [];
   (plugin as any).client = { async sendMessage(payload) { sent.push(payload); return { ret: sent.length === 1 ? -2 : 0 }; } };
   const request = { externalScopeId: 'wxid_sender', content: 'queued result', deliveryId: 'stable-output-id' };
+  assert.equal((await plugin.sendText(request)).success, false);
+  assert.equal(sent.length, 1, 'shared sends make one transport attempt per queue attempt');
+  setContextToken(rootDir, 'bot-account', 'wxid_sender', 'fresh-context');
   assert.equal((await plugin.sendText(request)).success, true);
   assert.equal((await plugin.sendText(request)).success, true);
   assert.deepEqual(sent.map(item => item.contextToken), ['old-context', 'fresh-context', 'fresh-context']);

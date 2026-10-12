@@ -382,7 +382,7 @@ export class CodexAppClient extends EventEmitter {
     clientInfo = {
       name: 'codexbridge',
       title: 'CodexBridge',
-      version: '0.1.22',
+      version: '0.1.24',
     },
     spawnImpl = spawn,
     webSocketFactory = (url) => new WebSocket(url),

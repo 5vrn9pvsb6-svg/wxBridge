@@ -106,6 +106,29 @@ test('catalog rejects symlink escapes and missing sessions instead of selecting 
   }
 });
 
+test('shared entry ensures the original desktop owner only after validating the selected target and catalog', async context => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-wake-target-'));
+  context.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(home, 'sessions'));
+  fs.writeFileSync(path.join(home, 'sessions', 'rollout-thread-1.jsonl'),
+    JSON.stringify({ type: 'session_meta', payload: { id: 'thread-1', cwd: '/project' } }) + '\n');
+  const target: CodexDesktopTarget = {
+    home, platform: 'darwin', endpoint: path.join(home, 'ipc.sock'), hostId: 'local', isWsl: false, legacyCompatible: false,
+  };
+  const ensured: string[] = [];
+  const relay = new CodexDesktopThreadRelay({ enabled: true, target, submitter: {
+    ensureThreadOwner: async threadId => { ensured.push(threadId); return { clientId: 'desktop-owner' }; },
+    probeThreadOwner: async () => assert.fail('Entry must use recovery-capable owner discovery'),
+    submitTurn: async () => assert.fail('Entry must never submit input'),
+  } });
+  await assert.rejects(relay.prepareSharing('thread-1', 'different-target'), /目标已变化/u);
+  await assert.rejects(relay.prepareSharing('missing'), /未找到所选桌面会话/u);
+  assert.deepEqual(ensured, []);
+  const prepared = await relay.prepareSharing('thread-1', desktopTargetIdentity(target).key);
+  assert.equal(prepared.thread.threadId, 'thread-1');
+  assert.deepEqual(ensured, ['thread-1']);
+});
+
 for (const platform of ['win32', 'linux'] as const) {
   test('simulated ' + platform + ' shared relay uses its target and never starts an independent client', async context => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-platform-'));

@@ -20,6 +20,15 @@ export const macosCodexHost: CodexHostPlatform = {
   }),
   canonicalDesktopEndpoint: target => fs.existsSync(target.endpoint) ? fs.realpathSync(target.endpoint) : target.endpoint,
   openDesktopTransport: (target, timeoutMs, signal) => openUnixDesktopTransport(target.endpoint, timeoutMs, signal),
+  wakeDesktopThread: async ({ threadId, hostId, runCommand }) => {
+    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(threadId)) { throw new Error('Invalid desktop thread id'); }
+    requireLocalDesktopHost(hostId);
+    const url = new URL(`codex://threads/${threadId}`);
+    url.searchParams.set('hostId', hostId);
+    // No prompt, Return key, new writer or unlock operation. The existing app
+    // loads its own thread; -g asks Launch Services not to foreground it.
+    await runCommand('/usr/bin/open', ['-g', url.toString()]);
+  },
   submitDesktopGui: async ({ deepLink, appName, submitDelayMs, runCommand, sleep }) => {
     await runCommand('/usr/bin/open', [deepLink]);
     await sleep(submitDelayMs);

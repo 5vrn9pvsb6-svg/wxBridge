@@ -57,6 +57,7 @@ export interface CodexHostPlatform {
   resolveDesktopTarget(context: DesktopTargetContext): CodexDesktopTarget;
   canonicalDesktopEndpoint(target: CodexDesktopTarget): string;
   openDesktopTransport(target: CodexDesktopTarget, timeoutMs: number, signal?: AbortSignal): Promise<DesktopIpcTransport>;
+  wakeDesktopThread?(params: { threadId: string; hostId: string; runCommand: DesktopCommandRunner }): Promise<void>;
   submitDesktopGui(params: DesktopGuiSubmission): Promise<void>;
   createCliLaunchSpec(command: string, args: string[]): CodexCliLaunchSpec;
   normalizeCommandPath(command: string): string;

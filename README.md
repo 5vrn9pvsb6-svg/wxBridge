@@ -610,6 +610,8 @@ Current limits:
 
 `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=ipc` is the default. `CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET` optionally selects an absolute socket path; otherwise the adapter uses `$CODEX_HOME/ipc/ipc.sock` (or `~/.codex/ipc/ipc.sock`). The socket and its directory must be owned by the current user and not writable by other users.
 
+On macOS, the desktop may release a session after prolonged inactivity. Entry and subsequent shared messages can wake the original thread with a prompt-free `codex://threads/...` link, then poll for its owner for approximately ten seconds before any single IPC submission. Opening is requested in the background, but the app may display the selected thread. This does not simulate Return, unlock the computer, or start another execution process. Read-only probes never wake threads. Failed entry returns a message without changing the current binding; open the session on your computer and retry if recovery fails. Windows/WSL currently require manual opening of idle sessions. Recovery while locked still needs real-device acceptance; support is not guaranteed across desktop versions.
+
 For older desktop versions, explicitly set `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=gui` to use the previous deep-link/Return-key method. That compatibility mode requires macOS Accessibility permission and an unlocked desktop. It is never selected automatically on IPC failure. Optional GUI tuning values are `CODEXBRIDGE_CODEX_DESKTOP_APP_NAME` and `CODEXBRIDGE_CODEX_DESKTOP_SUBMIT_DELAY_MS`; both transports retain `CODEXBRIDGE_CODEX_DESKTOP_POLL_INTERVAL_MS`, `CODEXBRIDGE_CODEX_DESKTOP_TIMEOUT_MS`, and `CODEXBRIDGE_CODEX_DESKTOP_MAX_PROMPT_CHARS` (IPC currently accepts up to 16,000 characters).
 
 <a id="windows-wsl2-desktop-sharing"></a>

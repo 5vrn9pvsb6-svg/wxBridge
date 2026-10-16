@@ -590,6 +590,8 @@ CODEXBRIDGE_CODEX_DESKTOP_SHARED_THREAD=1
 
 `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=ipc` 是默认值。可以用 `CODEXBRIDGE_CODEX_DESKTOP_IPC_SOCKET` 指定绝对 Socket 路径，否则使用 `$CODEX_HOME/ipc/ipc.sock`（或 `~/.codex/ipc/ipc.sock`）。Socket 及所在目录必须归当前用户所有，且其他用户不可写。
 
+macOS 桌面端可能在长时间空闲后释放会话。此时 `/enter` 或后续共享消息会先尝试用不带提示词的 `codex://threads/...` 链接唤醒原会话，再等待最多约 10 秒检查持有者；消息仍只通过 IPC 提交一次。该操作请求后台打开，但桌面应用可能显示所选会话；不模拟回车、不解锁、不新建执行进程。只读连接探测不会触发唤醒。恢复失败时微信会收到提示，`/enter` 不改变原绑定；可在电脑打开该会话后重试。Windows/WSL 暂需手动打开休眠会话。空闲恢复的锁屏场景仍需实机验证，不能据此保证所有桌面版本均支持锁屏唤醒。
+
 旧版桌面应用可以显式设置 `CODEXBRIDGE_CODEX_DESKTOP_TRANSPORT=gui`，使用旧的深层链接和回车键方式。该兼容模式要求 macOS 辅助功能权限及已解锁桌面；IPC 失败时绝不会自动切换到 GUI。GUI 可选参数为 `CODEXBRIDGE_CODEX_DESKTOP_APP_NAME` 和 `CODEXBRIDGE_CODEX_DESKTOP_SUBMIT_DELAY_MS`。两种模式都支持 `CODEXBRIDGE_CODEX_DESKTOP_POLL_INTERVAL_MS`、`CODEXBRIDGE_CODEX_DESKTOP_TIMEOUT_MS` 和 `CODEXBRIDGE_CODEX_DESKTOP_MAX_PROMPT_CHARS`；IPC 当前最多接受 16,000 字符。
 
 <a id="windows-wsl2-desktop-sharing"></a>

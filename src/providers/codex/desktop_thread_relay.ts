@@ -172,8 +172,9 @@ export class CodexDesktopThreadRelay {
     const thread = this.catalog.read(threadId);
     if (!thread) { throw new Error('未找到所选桌面会话的记录，请刷新 /enter 并检查共享目录。'); }
     if (this.transport === 'ipc') {
-      if (!this.submitter.probeThreadOwner) { throw new Error('Desktop owner probing is unavailable'); }
-      await this.submitter.probeThreadOwner(threadId);
+      const ensureOwner = this.submitter.ensureThreadOwner ?? this.submitter.probeThreadOwner;
+      if (!ensureOwner) { throw new Error('Desktop owner probing is unavailable'); }
+      await ensureOwner.call(this.submitter, threadId);
     }
     return { thread, desktopTarget: identity };
   }
@@ -557,12 +558,16 @@ export function createCodexDesktopThreadRelayFromEnv(
       submitter: { submitTurn: async () => { throw configurationError; } },
     });
   }
+  const host = getCodexHostPlatform(platform);
   return new CodexDesktopThreadRelay({
     enabled: true,
     transport,
     submitter: new CodexDesktopIpcClient({
       hostId: target.hostId,
       transportFactory: desktopTransportFactory(target),
+      recoverThreadOwner: host.wakeDesktopThread
+        ? threadId => host.wakeDesktopThread!({ threadId, hostId: target.hostId, runCommand: runCommandFile })
+        : undefined,
     }),
     target,
     rolloutReader: new CodexDesktopRolloutReader(path.join(target.home, 'sessions')),

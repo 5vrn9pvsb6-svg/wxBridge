@@ -7,6 +7,17 @@ All notable changes to wxBridage are documented here.
 - Rename the project to wxBridage in current documentation while retaining original upstream attribution and existing configuration identifiers.
 - Lead both README languages with desktop session sharing, covering Codex and Claude Code, explicit entry/exit, synchronized output and completion/duration notices.
 
+## 0.1.28 - 2026-10-16
+
+- Recover macOS desktop sessions released after prolonged inactivity: on a definite missing-owner response, open the original thread with a prompt-free background link, then recheck its owner before entry or a single IPC submission.
+- Keep diagnostic probes read-only and never recover by creating a second writer, simulating Return, retrying dispatched input, or changing thread settings. Windows/WSL retain explicit manual-open recovery.
+- Return a localized `/enter` failure response without changing either the current binding or its remembered standalone session.
+
+## 0.1.27 - 2026-10-16
+
+- Exclude reply-budget sidecar files from saved WeChat account discovery, restoring automatic selection of a single account after service restart without changing credentials, cursors or reply counters.
+- Apply the same exclusion to Linux/WSL service installation and verify restart discovery, orphaned sidecars and explicit selection with multiple real accounts.
+
 ## 0.1.26 - 2026-10-12
 
 - Fix the shared linked-report regression test to require completion and elapsed-time notices before attachment failure notices, matching the reserved reply-budget behavior introduced in 0.1.25.

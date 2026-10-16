@@ -8,6 +8,7 @@ import test from 'node:test';
 import { desktopTargetIdentity, resolveCodexDesktopTarget, DesktopTargetError } from '../../../src/providers/codex/desktop_target.js';
 import { createCodexCliLaunchSpec } from '../../../src/providers/codex/cli_command.js';
 import { findDesktopPipeHelper } from '../../../src/providers/codex/host/windows.js';
+import { macosCodexHost } from '../../../src/providers/codex/host/macos.js';
 import { getServicePlatform } from '../../../scripts/service/platform/index.mjs';
 
 test('macOS keeps the legacy default binding and rejects remote or relative desktop targets', () => {
@@ -55,6 +56,20 @@ test('Linux desktop sharing still requires WSL2 while independent CLI execution 
 test('moving Windows code retains the packaged PowerShell helper location', () => {
   const expected = fileURLToPath(new URL('../../../scripts/codex-desktop-pipe.ps1', import.meta.url));
   assert.equal(fs.realpathSync(findDesktopPipeHelper()), fs.realpathSync(expected));
+});
+
+test('macOS wakes an existing thread through a background link without a prompt or keyboard automation', async () => {
+  const commands: Array<[string, string[]]> = [];
+  await macosCodexHost.wakeDesktopThread!({
+    threadId: 'thread-1', hostId: 'local', runCommand: async (file, args) => { commands.push([file, args]); },
+  });
+  assert.deepEqual(commands, [['/usr/bin/open', ['-g', 'codex://threads/thread-1?hostId=local']]]);
+  await assert.rejects(macosCodexHost.wakeDesktopThread!({
+    threadId: '../invalid', hostId: 'local', runCommand: async () => assert.fail('invalid IDs must not reach the launcher'),
+  }), /Invalid desktop thread/u);
+  await assert.rejects(macosCodexHost.wakeDesktopThread!({
+    threadId: 'thread-1', hostId: 'remote-wsl:Ubuntu', runCommand: async () => assert.fail('macOS must not wake a different host'),
+  }), /主机标识/u);
 });
 
 test('service adapters keep each OS environment location and Windows home defaults', () => {

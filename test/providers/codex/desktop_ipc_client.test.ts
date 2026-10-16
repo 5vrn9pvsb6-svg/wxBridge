@@ -130,6 +130,108 @@ test('unavailable or incompatible owners do not receive a submission', async (co
   assert.equal(f.messages.filter((message) => message.method === 'thread-follower-start-turn').length, 0);
 });
 
+test('entry wakes an idle desktop thread once, polls ownership, and never submits a prompt', async context => {
+  let wakes = 0;
+  let pollsAfterWake = 0;
+  const f = await fixture(context, (message, socket) => {
+    if (message.method !== 'thread-owner-discovery') { return false; }
+    if (wakes && ++pollsAfterWake >= 2) { return false; }
+    socket.write(frame({ type: 'response', requestId: message.requestId, resultType: 'error', error: 'no-client-found' }));
+    return true;
+  });
+  const client = new CodexDesktopIpcClient({
+    socketPath: f.socketPath, ownerRecoveryPollIntervalMs: 1,
+    recoverThreadOwner: async threadId => { assert.equal(threadId, 'thread-1'); wakes++; },
+  });
+  // An explicitly read-only diagnostic must not open a desktop thread.
+  await assert.rejects(client.probeThreadOwner('thread-1'), /未找到兼容/u);
+  assert.equal(wakes, 0);
+  assert.deepEqual(await client.ensureThreadOwner('thread-1'), { clientId: 'desktop-owner' });
+  assert.equal(wakes, 1);
+  assert.equal(pollsAfterWake, 2);
+  assert.equal(f.messages.filter(message => message.method === 'thread-follower-start-turn').length, 0);
+});
+
+test('a shared message after overnight idle recovers the original owner and is submitted exactly once', async context => {
+  let wakes = 0;
+  const f = await fixture(context, (message, socket) => {
+    if (message.method !== 'thread-owner-discovery' || wakes) { return false; }
+    socket.write(frame({ type: 'response', requestId: message.requestId, resultType: 'error', error: 'no-client-found' }));
+    return true;
+  });
+  const client = new CodexDesktopIpcClient({
+    socketPath: f.socketPath,
+    recoverThreadOwner: async threadId => { assert.equal(threadId, 'thread-1'); wakes++; },
+  });
+  assert.deepEqual(await client.submitTurn('thread-1', 'continue the existing conversation'), { turnId: 'desktop-turn' });
+  assert.equal(wakes, 1);
+  const submissions = f.messages.filter(message => message.method === 'thread-follower-start-turn');
+  assert.equal(submissions.length, 1);
+  assert.equal(submissions[0].params.conversationId, 'thread-1');
+  assert.equal(submissions[0].targetClientId, 'desktop-owner');
+});
+
+test('online owners and incompatible protocols are never woken', async context => {
+  let wakes = 0;
+  const f = await fixture(context);
+  const client = new CodexDesktopIpcClient({ socketPath: f.socketPath, recoverThreadOwner: async () => { wakes++; } });
+  await client.ensureThreadOwner('thread-1');
+  await client.submitTurn('thread-1', 'hello');
+  const incompatible = await fixture(context, (message, socket) => {
+    if (message.method !== 'thread-owner-discovery') { return false; }
+    socket.write(frame({ type: 'response', requestId: message.requestId, resultType: 'error', error: 'request-version-mismatch' }));
+    return true;
+  });
+  await assert.rejects(new CodexDesktopIpcClient({
+    socketPath: incompatible.socketPath, recoverThreadOwner: async () => { wakes++; },
+  }).ensureThreadOwner('thread-1'), /未找到兼容/u);
+  assert.equal(wakes, 0);
+});
+
+for (const failure of ['unavailable', 'wake-failed', 'abort'] as const) {
+  test(`owner recovery ${failure} is bounded and never sends a model message`, async context => {
+    let wakes = 0;
+    const controller = new AbortController();
+    const f = await fixture(context, (message, socket) => {
+      if (message.method !== 'thread-owner-discovery') { return false; }
+      socket.write(frame({ type: 'response', requestId: message.requestId, resultType: 'error', error: 'no-client-found' }));
+      return true;
+    });
+    const client = new CodexDesktopIpcClient({
+      socketPath: f.socketPath, ownerRecoveryTimeoutMs: 15, ownerRecoveryPollIntervalMs: 2,
+      recoverThreadOwner: async () => {
+        wakes++;
+        if (failure === 'wake-failed') { throw new Error('secret launcher diagnostics'); }
+        if (failure === 'abort') { controller.abort(); }
+      },
+    });
+    await assert.rejects(client.submitTurn('thread-1', 'hello', controller.signal), error => {
+      assert.doesNotMatch((error as Error).message, /secret/u);
+      return failure === 'abort' || (error instanceof DesktopIpcSubmissionError && !error.outcomeUnknown);
+    });
+    assert.equal(wakes, 1);
+    assert.equal(f.messages.filter(message => message.method === 'thread-follower-start-turn').length, 0);
+  });
+}
+
+test('lost acknowledgement after owner recovery does not wake or submit a second time', async context => {
+  let wakes = 0;
+  const f = await fixture(context, (message, socket) => {
+    if (message.method === 'thread-owner-discovery' && !wakes) {
+      socket.write(frame({ type: 'response', requestId: message.requestId, resultType: 'error', error: 'no-client-found' }));
+      return true;
+    }
+    if (message.method !== 'thread-follower-start-turn') { return false; }
+    socket.destroy();
+    return true;
+  });
+  const client = new CodexDesktopIpcClient({ socketPath: f.socketPath, recoverThreadOwner: async () => { wakes++; } });
+  await assert.rejects(client.submitTurn('thread-1', 'hello'), error =>
+    error instanceof DesktopIpcSubmissionError && error.outcomeUnknown);
+  assert.equal(wakes, 1);
+  assert.equal(f.messages.filter(message => message.method === 'thread-follower-start-turn').length, 1);
+});
+
 for (const failure of ['timeout', 'disconnect', 'invalid-ack']) {
   test(`ambiguous ${failure} is not retried or reported as definitely unsent`, async (context) => {
     const f = await fixture(context, (message, socket) => {

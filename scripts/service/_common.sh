@@ -91,7 +91,7 @@ find_single_weixin_account_id() {
     local basename
     basename="$(basename "${file}")"
     case "${basename}" in
-      *.context-tokens.json|*.sync.json) continue ;;
+      *.context-tokens.json|*.sync.json|*.reply-budget.json) continue ;;
       *.json) candidates+=("${basename%.json}") ;;
     esac
   done < <(find "${accounts_dir}" -maxdepth 1 -type f -name '*.json' -print0 | sort -z)

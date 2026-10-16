@@ -7217,6 +7217,40 @@ test('desktop failures never enter independent thread recovery or resubmit a pos
   assert.equal(runtime.services.bridgeSessions.resolveScopeExecutionMode(scope), 'desktop_shared');
 });
 
+test('/enter recovery failure replies to WeChat, preserves the previous binding, and permits re-entry after recovery', async () => {
+  const { runtime, openai } = makeRuntime();
+  const coordinator = runtime.services.bridgeCoordinator;
+  const scope = { platform: 'weixin', externalScopeId: 'wx-idle-reentry' };
+  const independent = await coordinator.handleInboundEvent({ ...scope, text: 'independent context' });
+  const desktop = await coordinator.handleInboundEvent({ platform: 'telegram', externalScopeId: 'desktop-idle', text: 'desktop context' });
+  const enter = '/enter ' + desktop.session!.codexThreadId;
+  await coordinator.handleInboundEvent({ ...scope, text: enter });
+  await coordinator.handleInboundEvent({ ...scope, text: '/exit' });
+  const before = runtime.services.bridgeSessions.resolveScopeBinding(scope);
+  const starts = openai.startTurnCalls.length;
+  const resumes = openai.resumeThreadCalls.length;
+  (openai as any).prepareDesktopThreadSharing = async () => { throw new Error('no-client-found; secret internal diagnostics'); };
+  const failed = await coordinator.handleInboundEvent({ ...scope, text: enter });
+  const failureText = failed.messages.map(message => message.text).join('\n');
+  assert.match(failureText, /进入共享会话失败/u);
+  assert.match(failureText, /当前绑定保持不变/u);
+  assert.doesNotMatch(failureText, /secret/u);
+  assert.deepEqual(runtime.services.bridgeSessions.resolveScopeBinding(scope), before);
+  assert.equal(failed.session!.bridgeSessionId, independent.session!.bridgeSessionId);
+  assert.equal(openai.startTurnCalls.length, starts);
+  assert.equal(openai.resumeThreadCalls.length, resumes);
+  (openai as any).prepareDesktopThreadSharing = async () => undefined;
+  const recovered = await coordinator.handleInboundEvent({ ...scope, text: enter });
+  assert.equal(recovered.session!.codexThreadId, desktop.session!.codexThreadId);
+  assert.equal(runtime.services.bridgeSessions.resolveScopeExecutionMode(scope), 'desktop_shared');
+  const sharedBinding = runtime.services.bridgeSessions.resolveScopeBinding(scope);
+  (openai as any).prepareDesktopThreadSharing = async () => { throw new Error('still unavailable'); };
+  await coordinator.handleInboundEvent({ ...scope, text: '/enter ' + independent.session!.codexThreadId });
+  assert.deepEqual(runtime.services.bridgeSessions.resolveScopeBinding(scope), sharedBinding);
+  const exited = await coordinator.handleInboundEvent({ ...scope, text: '/exit' });
+  assert.equal(exited.session!.bridgeSessionId, independent.session!.bridgeSessionId);
+});
+
 test('/enter lists ten desktop thread choices per page and preserves paging', async () => {
   const { runtime } = makeRuntime();
   for (let index = 1; index <= 12; index += 1) {

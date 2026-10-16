@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Duplex } from 'node:stream';
 import { openUnixDesktopTransport, type DesktopIpcTransportFactory } from './desktop_ipc_transport.js';
 
@@ -24,6 +25,7 @@ interface IpcMessage {
 export interface DesktopTurnSubmitter {
   submitTurn(threadId: string, prompt: string, signal?: AbortSignal): Promise<{ turnId: string }>;
   probeThreadOwner?(threadId: string, signal?: AbortSignal): Promise<{ clientId: string }>;
+  ensureThreadOwner?(threadId: string, signal?: AbortSignal): Promise<{ clientId: string }>;
 }
 
 export class DesktopIpcSubmissionError extends Error {
@@ -33,35 +35,60 @@ export class DesktopIpcSubmissionError extends Error {
   }
 }
 
+class MissingDesktopThreadOwnerError extends DesktopIpcSubmissionError {}
+
 /** Connects to the desktop owner; it never starts a server or becomes a writer. */
 export class CodexDesktopIpcClient implements DesktopTurnSubmitter {
   private readonly timeoutMs: number;
   private readonly hostId: string;
   private readonly openTransport: DesktopIpcTransportFactory;
+  private readonly recoverThreadOwner?: (threadId: string, signal?: AbortSignal) => Promise<void>;
+  private readonly ownerRecoveryTimeoutMs: number;
+  private readonly ownerRecoveryPollIntervalMs: number;
 
   constructor({
     socketPath = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'ipc', 'ipc.sock'),
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     hostId = 'local',
     transportFactory,
-  }: { socketPath?: string; timeoutMs?: number; hostId?: string; transportFactory?: DesktopIpcTransportFactory } = {}) {
+    recoverThreadOwner,
+    ownerRecoveryTimeoutMs = 10_000,
+    ownerRecoveryPollIntervalMs = 250,
+  }: {
+    socketPath?: string; timeoutMs?: number; hostId?: string; transportFactory?: DesktopIpcTransportFactory;
+    recoverThreadOwner?: (threadId: string, signal?: AbortSignal) => Promise<void>;
+    ownerRecoveryTimeoutMs?: number; ownerRecoveryPollIntervalMs?: number;
+  } = {}) {
     if (!path.isAbsolute(socketPath)) { throw new Error('Desktop IPC socket path must be absolute'); }
     if (hostId !== 'local' && !/^remote-wsl:[A-Za-z0-9_.!~*'()%:-]{1,384}$/u.test(hostId)) { throw new Error('Invalid desktop host id'); }
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) { throw new Error('Invalid desktop IPC timeout'); }
+    if (![ownerRecoveryTimeoutMs, ownerRecoveryPollIntervalMs].every(value => Number.isSafeInteger(value) && value > 0)) {
+      throw new Error('Invalid desktop owner recovery timing');
+    }
     this.timeoutMs = timeoutMs;
     this.hostId = hostId;
     this.openTransport = transportFactory ?? (signal => openUnixDesktopTransport(socketPath, timeoutMs, signal));
+    this.recoverThreadOwner = recoverThreadOwner;
+    this.ownerRecoveryTimeoutMs = ownerRecoveryTimeoutMs;
+    this.ownerRecoveryPollIntervalMs = ownerRecoveryPollIntervalMs;
   }
 
   async probeThreadOwner(threadId: string, signal?: AbortSignal): Promise<{ clientId: string }> {
+    validateThreadId(threadId);
     return this.withConnection(async (connection) => ({ clientId: await this.findOwner(connection, threadId) }), signal);
+  }
+
+  /** Entry may wake the existing desktop owner, but never submits input. */
+  async ensureThreadOwner(threadId: string, signal?: AbortSignal): Promise<{ clientId: string }> {
+    validateThreadId(threadId);
+    return this.withConnection(async connection => ({ clientId: await this.findOwnerWithRecovery(connection, threadId, signal) }), signal);
   }
 
   async submitTurn(threadId: string, prompt: string, signal?: AbortSignal): Promise<{ turnId: string }> {
     validateThreadId(threadId);
     if (!prompt.trim() || prompt.length > 16_000) { throw new Error('Invalid desktop IPC prompt'); }
     return this.withConnection(async (connection) => {
-      const owner = await this.findOwner(connection, threadId);
+      const owner = await this.findOwnerWithRecovery(connection, threadId, signal);
       let response: IpcMessage;
       try {
         response = await connection.request('thread-follower-start-turn', {
@@ -99,11 +126,40 @@ export class CodexDesktopIpcClient implements DesktopTurnSubmitter {
   private async findOwner(connection: DesktopIpcConnection, threadId: string): Promise<string> {
     validateThreadId(threadId);
     const response = await connection.request('thread-owner-discovery', { hostId: this.hostId, conversationId: threadId }, 1);
+    if (response.resultType === 'error' && response.error === 'no-client-found') {
+      throw new MissingDesktopThreadOwnerError('未找到兼容的桌面会话持有者；请保持桌面端运行，并在桌面打开该会话后重试。');
+    }
     if (response.resultType !== 'success' || typeof response.handledByClientId !== 'string'
       || !response.handledByClientId || response.result?.supportsUntrustedAppInput !== true) {
       throw new DesktopIpcSubmissionError('未找到兼容的桌面会话持有者；请保持桌面端运行，并在桌面打开该会话后重试。');
     }
     return response.handledByClientId;
+  }
+
+  private async findOwnerWithRecovery(connection: DesktopIpcConnection, threadId: string, signal?: AbortSignal): Promise<string> {
+    try { return await this.findOwner(connection, threadId); }
+    catch (error) {
+      // Only a definite missing owner is recoverable. Protocol errors and
+      // ambiguous submissions must never launch a fallback or resend input.
+      if (!(error instanceof MissingDesktopThreadOwnerError) || !this.recoverThreadOwner) { throw error; }
+    }
+    signal?.throwIfAborted();
+    try { await this.recoverThreadOwner(threadId, signal); }
+    catch {
+      signal?.throwIfAborted();
+      throw new DesktopIpcSubmissionError('桌面会话自动唤醒失败，未提交消息；请在电脑打开该会话，再重新 /enter 选择。');
+    }
+    const deadline = Date.now() + this.ownerRecoveryTimeoutMs;
+    while (true) {
+      signal?.throwIfAborted();
+      try { return await this.findOwner(connection, threadId); }
+      catch (error) { if (!(error instanceof MissingDesktopThreadOwnerError)) { throw error; } }
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        throw new DesktopIpcSubmissionError('桌面会话暂未恢复，未提交消息；请在电脑打开该会话，再重新 /enter 选择。');
+      }
+      await delay(Math.min(this.ownerRecoveryPollIntervalMs, remainingMs), undefined, { signal });
+    }
   }
 
   private async withConnection<T>(operation: (connection: DesktopIpcConnection) => Promise<T>, signal?: AbortSignal): Promise<T> {

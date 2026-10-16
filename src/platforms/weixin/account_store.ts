@@ -29,6 +29,7 @@ export class WeixinAccountStore {
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
       .filter((entry) => !entry.name.endsWith('.context-tokens.json'))
       .filter((entry) => !entry.name.endsWith('.sync.json'))
+      .filter((entry) => !entry.name.endsWith('.reply-budget.json'))
       .map((entry) => entry.name.slice(0, -'.json'.length))
       .sort();
   }

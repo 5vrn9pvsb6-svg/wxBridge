@@ -4417,10 +4417,17 @@ export class BridgeCoordinator {
         this.t('coordinator.enter.unavailable'),
       ], this.buildScopedSessionMeta(event));
     }
-    const preparedDesktopThread = await providerPlugin.prepareDesktopThreadSharing?.({
-      threadId: resolvedThread.threadId,
-      expectedTargetKey: resolvedThread.desktopTarget?.key,
-    });
+    let preparedDesktopThread;
+    try {
+      preparedDesktopThread = await providerPlugin.prepareDesktopThreadSharing?.({
+        threadId: resolvedThread.threadId,
+        expectedTargetKey: resolvedThread.desktopTarget?.key,
+      });
+    } catch {
+      // Preparation must complete before mutating either the current shared
+      // binding or the remembered independent session. Never expose raw errors.
+      return messageResponse([this.t('coordinator.enter.failed')], this.buildScopedSessionMeta(event));
+    }
     const session = await this.bridgeSessions.bindScopeToProviderThread(
       scopeRef,
       {
